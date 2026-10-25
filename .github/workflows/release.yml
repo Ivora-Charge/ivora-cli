@@ -1,0 +1,54 @@
+# Release DRY RUN. Builds, tests and packs the tarball, checks the package metadata that npm
+# provenance needs, and uploads the tarball as a workflow artifact. It never publishes: there
+# is no `npm publish`, no npm token and no id-token permission. Publishing is added in a later,
+# separately approved change (npm trusted publishing with provenance).
+name: Release (dry run)
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Install (no install scripts)
+        run: npm ci --ignore-scripts
+      - name: Verify dependency signatures and attestations
+        run: npm audit signatures
+      - name: Tag matches package version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          test "v${version}" = "${GITHUB_REF_NAME}" || { echo "tag ${GITHUB_REF_NAME} != v${version}"; exit 1; }
+      - name: Build and test
+        run: |
+          npm run build
+          npm run lint
+          npm test
+      - name: Pack
+        run: |
+          npm pack --ignore-scripts --json > pack.json
+          cat pack.json
+      - name: Provenance and package checks
+        run: node scripts/check-package.mjs --pack-json pack.json
+      - name: Publish guard refuses outside a publishing release
+        run: |
+          if node scripts/guard-publish.mjs; then echo "publish guard did not refuse"; exit 1; fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ivora-cli-tarball
+          path: '*.tgz'
+          if-no-files-found: error
+          retention-days: 7

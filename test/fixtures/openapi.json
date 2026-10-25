@@ -1,0 +1,92 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Ivora /v1 test fixture",
+    "version": "2026-10-15",
+    "description": "Hand-written fixture for the mock server and the catalog test. Not the real API contract; the synced OpenAPI snapshot replaces it."
+  },
+  "paths": {
+    "/v1/access": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "environment": "test",
+                  "tenant_id": "ten_fixture",
+                  "scopes": ["stations:read", "stations:write"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/capabilities": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": { "virtual_chargers": true }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tenants/{tenant_id}/stations": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": [
+                    {
+                      "id": "st_fixture_1",
+                      "charger_id": "FIXTURE-001",
+                      "online": true,
+                      "last_seen": "2026-01-01T00:00:00Z"
+                    }
+                  ],
+                  "next_cursor": null
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "example": { "id": "st_fixture_2", "charger_id": "FIXTURE-002" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tenants/{tenant_id}/stations/{station_id}": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": { "id": "st_fixture_1", "charger_id": "FIXTURE-001", "online": true }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/example": {
+      "get": {
+        "responses": { "200": { "content": { "application/json": { "example": {} } } } }
+      }
+    }
+  }
+}
