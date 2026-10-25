@@ -162,4 +162,27 @@ describe('request guards', () => {
     const now = Date.parse('2026-01-01T00:00:00Z');
     assert.equal(parseRetryAfter('Thu, 01 Jan 2026 00:00:10 GMT', now), 10);
   });
+
+  it('refuses staff paths in encoded forms', () => {
+    for (const p of [
+      '/v1/admin',
+      '/v1//admin',
+      '/v1/%61dmin',
+      '/v1/%2e%2e/v1/admin',
+      '/v1/x/%2E%2E/admin',
+      '/v1/x\\..\\admin',
+      '/v1/admin#',
+      '/v1/admin;x',
+      '/v1/admin%2fx',
+    ]) {
+      assert.throws(() => assertPublicPath(p), p);
+    }
+    assert.doesNotThrow(() => assertPublicPath('/v1/tenants/ten_1/stations?limit=5'));
+  });
+
+  it('refuses a non-https base URL before sending the key', () => {
+    assert.throws(
+      () => new ApiClient({ baseUrl: 'http://api.example.com', apiKey: TEST_KEY, apiVersion: 'v' }),
+    );
+  });
 });

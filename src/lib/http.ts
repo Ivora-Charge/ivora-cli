@@ -3,6 +3,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { CliError, ExitCode } from './output.js';
 import { redactBody, redactHeaders } from './secrets.js';
 import { CLI_VERSION } from '../version.js';
+import { validateBaseUrl } from './profiles.js';
 
 /**
  * Minimal client for the public /v1 API: bearer key, `Ivora-Version`, an Idempotency-Key on
@@ -31,16 +32,33 @@ export class ApiError extends CliError {
   }
 }
 
-/** Refuses anything but a relative public /v1 path. */
+/**
+ * Refuses anything but a relative public /v1 path. The check runs on the pathname the URL
+ * parser will actually send (it resolves `%2e%2e`, backslashes and drops `#...`), decoded and
+ * with repeated slashes collapsed, so encodings cannot reach a staff prefix.
+ */
 export function assertPublicPath(path: string): void {
   if (!path.startsWith('/v1/') && path !== '/v1') {
     throw new CliError(`Only /v1 paths are supported: ${path}`, ExitCode.Usage);
   }
-  const pathname = path.split('?', 1)[0] ?? path;
-  if (pathname.split('/').some((seg) => seg === '..' || seg === '.')) {
+  if (/[\\#]/.test(path) || /%2f|%5c/i.test(path)) {
     throw new CliError(`Invalid path: ${path}`, ExitCode.Usage);
   }
-  const lower = pathname.toLowerCase();
+  const pathname = path.split('?', 1)[0] ?? path;
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(pathname);
+  } catch {
+    throw new CliError(`Invalid path: ${path}`, ExitCode.Usage);
+  }
+  if (decoded.split('/').some((seg) => seg === '..' || seg === '.')) {
+    throw new CliError(`Invalid path: ${path}`, ExitCode.Usage);
+  }
+  const sent = new URL(pathname, 'https://placeholder.invalid').pathname;
+  const lower = decodeURIComponent(sent)
+    .replace(/\/{2,}/g, '/')
+    .replace(/;.*$/, '')
+    .toLowerCase();
   for (const prefix of STAFF_PREFIXES) {
     if (lower === prefix || lower.startsWith(`${prefix}/`)) {
       throw new CliError(`${prefix} is not part of the public API.`, ExitCode.Usage);
@@ -108,7 +126,8 @@ export class ApiClient {
       timeoutMs: 30_000,
       sleep: (ms: number) => delay(ms),
       ...options,
-      baseUrl: options.baseUrl.replace(/\/+$/, ''),
+      // https only (plain http just for loopback): the key is never sent in clear text.
+      baseUrl: validateBaseUrl(options.baseUrl),
     };
   }
 
