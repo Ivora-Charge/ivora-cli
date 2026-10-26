@@ -14,7 +14,7 @@
               "application/json": {
                 "example": {
                   "environment": "test",
-                  "tenant_id": "ten_fixture",
+                  "tenants": [{ "id": 42 }],
                   "scopes": ["stations:read", "stations:write"]
                 }
               }

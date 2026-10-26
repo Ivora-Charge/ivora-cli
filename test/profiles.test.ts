@@ -37,10 +37,27 @@ describe('profiles', () => {
       'https://sandbox.example.com',
     );
     assert.equal(
-      resolveBaseUrl(live, { IVORA_API_BASE: 'http://127.0.0.1:4010' }),
+      resolveBaseUrl(test, { IVORA_API_BASE: 'http://127.0.0.1:4010' }),
       'http://127.0.0.1:4010',
     );
     assert.throws(() => resolveBaseUrl(test, {}), { exitCode: ExitCode.Usage });
+  });
+
+  it('ignores IVORA_API_BASE for live profiles, with one note', () => {
+    const notes: string[] = [];
+    const env = { IVORA_API_BASE: 'http://127.0.0.1:4010' };
+    assert.equal(
+      resolveBaseUrl(live, env, (n) => notes.push(n)),
+      PRODUCTION_API_BASE,
+    );
+    assert.equal(
+      resolveBaseUrl({ ...live, baseUrl: 'https://api.example.com' }, env),
+      'https://api.example.com',
+    );
+    assert.equal(notes.length, 1);
+    assert.match(notes[0] ?? '', /IVORA_API_BASE is ignored/);
+    resolveBaseUrl(live, {}, (n) => notes.push(n));
+    assert.equal(notes.length, 1);
   });
 
   it('accepts only https origins (http for loopback)', () => {
