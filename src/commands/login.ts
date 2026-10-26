@@ -12,6 +12,7 @@ import {
   validateProfileName,
   type Profile,
 } from '../lib/profiles.js';
+import { accessEnvironment, defaultTenant, type Access } from '../lib/access.js';
 import { displayPrefix } from '../lib/secrets.js';
 import type { CommandContext } from '../lib/session.js';
 
@@ -78,17 +79,17 @@ export function loginCommand(ctx: CommandContext): Command {
         apiVersion: g.apiVersion,
         ...(ctx.fetch ? { fetch: ctx.fetch } : {}),
       });
-      const { data } = await client.request<{ environment?: string; tenant_id?: string }>(
-        'GET',
-        '/v1/access',
-      );
-      if (data?.environment && data.environment !== environment) {
+      const access = (await client.request<Access>('GET', '/v1/access')).data ?? {};
+      const serverEnvironment = accessEnvironment(access);
+      if (serverEnvironment && serverEnvironment !== environment) {
         throw new CliError(
-          `The server says this key belongs to the ${data.environment} environment. Nothing was saved.`,
+          `The server says this is a ${serverEnvironment} key, not a ${environment} one. Nothing was saved.`,
           ExitCode.Usage,
         );
       }
-      if (data?.tenant_id) profile.tenantId = data.tenant_id;
+      const tenantId = defaultTenant(access, (text) => ctx.out().info(`note: ${text}`));
+      if (tenantId) profile.tenantId = tenantId;
+      else delete profile.tenantId;
 
       await (await ctx.secrets()).set(profile.keyRef as string, apiKey);
       config.profiles[name] = profile;

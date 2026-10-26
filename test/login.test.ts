@@ -25,7 +25,8 @@ import { startMockApi, type MockApi } from './mock-server.js';
 const TEST_KEY = 'iv_test_fakekey1234567890';
 const LIVE_KEY = 'iv_live_fakekey1234567890';
 
-const LIVE_ACCESS = { environment: 'live', tenant_id: 'ten_fixture', scopes: ['stations:read'] };
+// The real /v1/access shape: environment is "test" or "production", tenants carry numeric ids.
+const LIVE_ACCESS = { environment: 'production', tenants: [{ id: 7 }], scopes: ['stations:read'] };
 function queueLiveAccess(): void {
   api.enqueue('GET', '/v1/access', { status: 200, body: LIVE_ACCESS });
 }
@@ -104,7 +105,7 @@ describe('ivora login', () => {
     const text = await readFile(file, 'utf8');
     assert.doesNotMatch(text, /iv_test_fake/);
     assert.match(text, /key_ref = "profile:test"/);
-    assert.match(text, /tenant_id = "ten_fixture"/);
+    assert.match(text, /tenant_id = "42"/);
     assert.equal((await stat(file)).mode & 0o077, 0);
     assert.doesNotMatch(s.stdout.text + s.stderr.text, /fakekey1234567890/);
   });
@@ -115,6 +116,77 @@ describe('ivora login', () => {
     assert.equal(await s.go(['--live', 'login'], `${TEST_KEY}\n`), ExitCode.Usage);
     assert.equal(await s.secrets.get('profile:test'), undefined);
     assert.doesNotMatch(s.stderr.text, /fakekey1234567890/);
+  });
+
+  it('maps the server environment "production" to live', async () => {
+    const s = await sandbox();
+    queueLiveAccess();
+    assert.equal(
+      await s.go(['--json', '--live', 'login', '--base-url', api.url], `${LIVE_KEY}\n`),
+      ExitCode.Ok,
+    );
+    const out = JSON.parse(s.stdout.text) as Record<string, unknown>;
+    assert.equal(out.environment, 'live');
+    assert.equal(out.tenant_id, '7');
+    assert.match(await readFile(join(s.dir, 'ivora', 'config.toml'), 'utf8'), /tenant_id = "7"/);
+  });
+
+  it('saves nothing when the server environment does not match the profile', async () => {
+    const s = await sandbox();
+    api.enqueue('GET', '/v1/access', {
+      status: 200,
+      body: { environment: 'production', tenants: [{ id: 1 }], scopes: [] },
+    });
+    assert.equal(await s.go(['login'], `${TEST_KEY}\n`), ExitCode.Usage);
+    assert.match(s.stderr.text, /live key/);
+    queueLiveAccess();
+    api.enqueue('GET', '/v1/access', {
+      status: 200,
+      body: { ...LIVE_ACCESS, environment: 'test' },
+    });
+    assert.equal(
+      await s.go(['--live', 'login', '--base-url', api.url], `${LIVE_KEY}\n`),
+      ExitCode.Ok,
+    );
+    // The queued "test" answer for a live login is refused.
+    assert.equal(
+      await s.go(['--live', '--profile', 'live2', 'login', '--base-url', api.url], `${LIVE_KEY}\n`),
+      ExitCode.Usage,
+    );
+    api.enqueue('GET', '/v1/access', { status: 200, body: { environment: 'staging' } });
+    assert.equal(await s.go(['--profile', 'odd', 'login'], `${TEST_KEY}\n`), ExitCode.Usage);
+    assert.match(s.stderr.text, /unknown environment/);
+    assert.equal(await s.secrets.get('profile:test'), undefined);
+    assert.equal(await s.secrets.get('profile:live2'), undefined);
+    assert.equal(await s.secrets.get('profile:odd'), undefined);
+  });
+
+  it('sets no default tenant when the key has none or several', async () => {
+    const s = await sandbox();
+    api.enqueue('GET', '/v1/access', {
+      status: 200,
+      body: { environment: 'test', tenants: [{ id: 3 }, { id: 5 }], scopes: [] },
+    });
+    assert.equal(await s.go(['login'], `${TEST_KEY}\n`), ExitCode.Ok);
+    assert.match(s.stderr.text, /2 tenants \(3, 5\); no default tenant/);
+    const file = join(s.dir, 'ivora', 'config.toml');
+    assert.doesNotMatch(await readFile(file, 'utf8'), /tenant_id/);
+
+    api.enqueue('GET', '/v1/access', { status: 200, body: { environment: 'test', tenants: [] } });
+    assert.equal(await s.go(['--profile', 'empty', 'login'], `${TEST_KEY}\n`), ExitCode.Ok);
+    assert.match(s.stderr.text, /no tenant, so no default tenant/);
+    assert.doesNotMatch(await readFile(file, 'utf8'), /tenant_id/);
+
+    // whoami lists every tenant but names none as the tenant.
+    api.enqueue('GET', '/v1/access', {
+      status: 200,
+      body: { environment: 'test', tenants: [{ id: 3 }, { id: 5 }], scopes: [] },
+    });
+    s.stdout.text = '';
+    assert.equal(await s.go(['--json', 'whoami']), ExitCode.Ok);
+    const out = JSON.parse(s.stdout.text) as Record<string, unknown>;
+    assert.equal(out.tenant_id, undefined);
+    assert.deepEqual(out.tenants, ['3', '5']);
   });
 
   it('saves nothing when the server rejects the key', async () => {
@@ -155,9 +227,36 @@ describe('ivora whoami and profiles', () => {
     s.stdout.text = '';
     assert.equal(await s.go(['--json', 'whoami']), ExitCode.Ok);
     const out = JSON.parse(s.stdout.text) as Record<string, unknown>;
-    assert.equal(out.tenant_id, 'ten_fixture');
+    assert.equal(out.tenant_id, '42');
+    assert.deepEqual(out.tenants, ['42']);
+    assert.equal(out.environment, 'test');
+    assert.equal(out.key, undefined);
     assert.deepEqual(out.scopes, ['stations:read', 'stations:write']);
     assert.ok(api.requests.some((r) => r.path === '/v1/capabilities'));
+  });
+
+  it('whoami shows the key object when the server sends it', async () => {
+    const s = await sandbox({ IVORA_API_KEY: TEST_KEY });
+    const key = {
+      id: 'key_fixture',
+      prefix: 'iv_test_fake',
+      label: 'ci',
+      created_at: '2026-10-01T00:00:00Z',
+      expires_at: null,
+    };
+    api.enqueue('GET', '/v1/access', {
+      status: 200,
+      body: { environment: 'test', tenants: [{ id: 42 }], scopes: [], key },
+    });
+    assert.equal(await s.go(['--json', 'whoami']), ExitCode.Ok);
+    const out = JSON.parse(s.stdout.text) as Record<string, unknown>;
+    // The output layer redacts anything key-shaped, the prefix included.
+    assert.deepEqual(out.key, {
+      id: 'key_fixture',
+      prefix: 'iv_test_[redacted]',
+      label: 'ci',
+      created_at: '2026-10-01T00:00:00Z',
+    });
   });
 
   it('whoami works from IVORA_API_KEY alone, and checks it against the profile', async () => {
