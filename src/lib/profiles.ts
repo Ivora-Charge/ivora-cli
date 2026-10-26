@@ -191,14 +191,27 @@ export function selectProfileName(
 }
 
 /**
- * The API base URL for a profile: `IVORA_API_BASE`, then the profile's own URL, then the
- * production default for live profiles. A test profile without a URL is a usage error.
+ * The API base URL for a profile. A test profile uses `IVORA_API_BASE`, then its own URL; without
+ * either it is a usage error. A live profile ignores `IVORA_API_BASE`, so a leftover test URL never
+ * receives a live key: it uses its own stored URL or the production default, and `note` is told
+ * when `IVORA_API_BASE` was ignored.
  */
-export function resolveBaseUrl(profile: Profile, env: NodeJS.ProcessEnv = process.env): string {
-  const candidate =
-    env.IVORA_API_BASE ??
-    profile.baseUrl ??
-    (profile.environment === 'live' ? PRODUCTION_API_BASE : undefined);
+export function resolveBaseUrl(
+  profile: Profile,
+  env: NodeJS.ProcessEnv = process.env,
+  note?: (text: string) => void,
+): string {
+  let candidate: string | undefined;
+  if (profile.environment === 'live') {
+    candidate = profile.baseUrl ?? PRODUCTION_API_BASE;
+    if (env.IVORA_API_BASE) {
+      note?.(
+        `IVORA_API_BASE is ignored for the live profile "${profile.name}"; using ${candidate}.`,
+      );
+    }
+  } else {
+    candidate = env.IVORA_API_BASE ?? profile.baseUrl;
+  }
   if (candidate === undefined) {
     throw new CliError(
       `No API base URL for the ${profile.environment} profile "${profile.name}". Set IVORA_API_BASE.`,

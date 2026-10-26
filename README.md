@@ -57,8 +57,10 @@ npm link
 ivora --version
 ```
 
-The default API endpoint is `https://api.ivoracharge.com`. Set `IVORA_API_BASE` to point the
-CLI at another environment.
+The default API endpoint is `https://api.ivoracharge.com`. Set `IVORA_API_BASE` (or
+`ivora login --base-url`) to point a test profile at another environment. Live profiles ignore
+`IVORA_API_BASE`, so a leftover test URL never receives a live key; a live profile uses the URL
+stored with `ivora --live login --base-url` or the default.
 
 ## Development
 

@@ -43,9 +43,7 @@ export function loginCommand(ctx: CommandContext): Command {
     .description(
       'verify an API key and save it to a profile (key from stdin, prompt or IVORA_API_KEY)',
     )
-    .addOption(
-      new Option('--base-url <url>', 'API origin to store with the profile (test profiles)'),
-    )
+    .addOption(new Option('--base-url <url>', 'API origin to store with the profile'))
     .action(async (opts: LoginOptions) => {
       const g = ctx.globals();
       const config = await loadConfig(ctx.env);
@@ -71,7 +69,7 @@ export function loginCommand(ctx: CommandContext): Command {
 
       const apiKey = await obtainKey(ctx);
       assertKeyMatchesProfile(apiKey, profile);
-      const baseUrl = resolveBaseUrl(profile, ctx.env);
+      const baseUrl = resolveBaseUrl(profile, ctx.env, (text) => ctx.out().info(`note: ${text}`));
 
       // Verify before saving anything.
       const client = new ApiClient({

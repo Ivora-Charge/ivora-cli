@@ -6,7 +6,12 @@ import { join } from 'node:path';
 import { after, afterEach, before, describe, it } from 'node:test';
 import { run, type RunIo } from '../src/cli.js';
 import { ExitCode } from '../src/lib/output.js';
-import { parseConfig, serializeConfig, type ProfileConfig } from '../src/lib/profiles.js';
+import {
+  PRODUCTION_API_BASE,
+  parseConfig,
+  serializeConfig,
+  type ProfileConfig,
+} from '../src/lib/profiles.js';
 import {
   KeychainSecretStore,
   MemorySecretStore,
@@ -128,7 +133,10 @@ describe('ivora login', () => {
   it('live is opt-in: login --live makes a live profile that is never the default', async () => {
     const s = await sandbox();
     queueLiveAccess();
-    assert.equal(await s.go(['--live', 'login'], `${LIVE_KEY}\n`), ExitCode.Ok);
+    assert.equal(
+      await s.go(['--live', 'login', '--base-url', api.url], `${LIVE_KEY}\n`),
+      ExitCode.Ok,
+    );
     assert.equal(await s.secrets.get('profile:live'), LIVE_KEY);
     assert.doesNotMatch(await readFile(join(s.dir, 'ivora', 'config.toml'), 'utf8'), /current/);
     // Without --live the live profile is not used, even with a live key in the environment.
@@ -157,8 +165,54 @@ describe('ivora whoami and profiles', () => {
     assert.equal(await s.go(['whoami']), ExitCode.Ok);
     const live = await sandbox({ IVORA_API_KEY: LIVE_KEY });
     assert.equal(await live.go(['whoami']), ExitCode.Usage);
+    // With --live and no stored profile the key goes to the production default, never to
+    // IVORA_API_BASE. A fake fetch stands in for the network.
+    const urls: string[] = [];
+    const fakeFetch: typeof fetch = async (input) => {
+      urls.push(String(input instanceof Request ? input.url : input));
+      const body = String(input).endsWith('/v1/access') ? LIVE_ACCESS : {};
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    };
+    assert.equal(await live.go(['--live', 'whoami'], '', { fetch: fakeFetch }), ExitCode.Ok);
+    assert.ok(urls.length > 0 && urls.every((u) => u.startsWith(`${PRODUCTION_API_BASE}/`)));
+    assert.equal(live.stderr.text.match(/IVORA_API_BASE is ignored/g)?.length, 1);
+  });
+
+  it('a live key in IVORA_API_KEY needs --live even with --profile <unstored name>', async () => {
+    const s = await sandbox({ IVORA_API_KEY: LIVE_KEY });
+    const before = api.requests.length;
+    assert.equal(await s.go(['--profile', 'prod', 'whoami']), ExitCode.Usage);
+    assert.match(s.stderr.text, /--live/);
+    assert.equal(api.requests.length, before);
+  });
+
+  it('a stored live profile ignores IVORA_API_BASE and uses its own URL', async () => {
+    const s = await sandbox();
     queueLiveAccess();
-    assert.equal(await live.go(['--live', 'whoami']), ExitCode.Ok);
+    assert.equal(
+      await s.go(['--live', 'login', '--base-url', api.url], `${LIVE_KEY}\n`),
+      ExitCode.Ok,
+    );
+    // A leftover IVORA_API_BASE (a closed loopback port here) must not receive the live key.
+    queueLiveAccess();
+    const before = api.requests.length;
+    const stderr = capture();
+    assert.equal(
+      await run(['--live', 'whoami'], {
+        stdout: capture(),
+        stderr,
+        env: { XDG_CONFIG_HOME: s.dir, IVORA_API_BASE: 'http://127.0.0.1:9' },
+        secrets: s.secrets,
+        stdin: Readable.from(['']),
+        prompter: { interactive: false, ask: async () => '' },
+      }),
+      ExitCode.Ok,
+    );
+    assert.ok(api.requests.length > before);
+    assert.equal(stderr.text.match(/IVORA_API_BASE is ignored/g)?.length, 1);
   });
 
   it('whoami without a login explains what to do', async () => {
@@ -172,7 +226,7 @@ describe('ivora whoami and profiles', () => {
     await s.go(['login'], `${TEST_KEY}\n`);
     await s.go(['--profile', 'staging', 'login'], `${TEST_KEY}\n`);
     queueLiveAccess();
-    await s.go(['--live', 'login'], `${LIVE_KEY}\n`);
+    await s.go(['--live', 'login', '--base-url', api.url], `${LIVE_KEY}\n`);
     s.stdout.text = '';
     assert.equal(await s.go(['--json', 'profiles', 'list']), ExitCode.Ok);
     const rows = JSON.parse(s.stdout.text) as { name: string; current: string }[];

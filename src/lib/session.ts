@@ -54,6 +54,11 @@ export async function openSession(ctx: CommandContext): Promise<Session> {
     if (environment === undefined) {
       throw new CliError('IVORA_API_KEY does not look like an Ivora API key.', ExitCode.Usage);
     }
+    // Naming a profile opts in to live only when that profile is stored as live. With no
+    // stored profile, a live key from the environment always needs --live.
+    if (!stored && environment === 'live' && !g.live) {
+      throw new CliError('IVORA_API_KEY holds a live key: pass --live to use it.', ExitCode.Usage);
+    }
     profile = stored ?? { name, environment };
     apiKey = envKey;
   } else {
@@ -88,7 +93,7 @@ export async function openSession(ctx: CommandContext): Promise<Session> {
     );
   }
 
-  const baseUrl = resolveBaseUrl(profile, ctx.env);
+  const baseUrl = resolveBaseUrl(profile, ctx.env, (text) => ctx.out().info(`note: ${text}`));
   const debug = g.debug ? (line: string): void => ctx.out().info(line) : undefined;
   const client = new ApiClient({
     baseUrl,
