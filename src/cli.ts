@@ -1,5 +1,11 @@
 import { Command, CommanderError, InvalidArgumentError, Option } from 'commander';
 import { CliError, ExitCode, Output, type Writable } from './lib/output.js';
+import { ttyPrompter, type Prompter } from './lib/confirm.js';
+import { openSecretStore, type SecretStore } from './lib/secrets.js';
+import type { CommandContext } from './lib/session.js';
+import { loginCommand } from './commands/login.js';
+import { profilesCommand } from './commands/profiles.js';
+import { whoamiCommand } from './commands/whoami.js';
 import { validateIdempotencyKey } from './lib/http.js';
 import {
   CLI_VERSION,
@@ -22,6 +28,43 @@ export interface RunIo {
   stdout?: Writable;
   stderr?: Writable;
   env?: NodeJS.ProcessEnv;
+  stdin?: NodeJS.ReadableStream & { isTTY?: boolean };
+  prompter?: Prompter;
+  /** Replaces the OS keychain (tests). */
+  secrets?: SecretStore;
+  readSecret?: (prompt: string) => Promise<string>;
+  fetch?: typeof fetch;
+}
+
+/** Reads a line from the terminal without echoing it. */
+function readHiddenLine(
+  input: NodeJS.ReadStream,
+  stderr: Writable,
+  prompt: string,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    stderr.write(prompt);
+    let line = '';
+    const finish = (fn: () => void): void => {
+      input.setRawMode(false);
+      input.pause();
+      input.off('data', onData);
+      stderr.write('\n');
+      fn();
+    };
+    const onData = (chunk: Buffer): void => {
+      for (const ch of chunk.toString('utf8')) {
+        if (ch === '\r' || ch === '\n' || ch === '\u0004') return finish(() => resolve(line));
+        if (ch === '\u0003')
+          return finish(() => reject(new CliError('Cancelled.', ExitCode.ConfirmRefused)));
+        if (ch === '\u007f' || ch === '\b') line = line.slice(0, -1);
+        else line += ch;
+      }
+    };
+    input.setRawMode(true);
+    input.resume();
+    input.on('data', onData);
+  });
 }
 
 export function versionText(): string {
@@ -43,9 +86,22 @@ function parseIdempotencyKey(value: string): string {
   }
 }
 
-export function buildProgram(io: Required<Pick<RunIo, 'stdout' | 'stderr'>>): Command {
+/** Subcommands do not inherit exitOverride and output settings; without them they exit the process. */
+function inheritSettings(parent: Command): void {
+  for (const sub of parent.commands) {
+    sub.copyInheritedSettings(parent);
+    inheritSettings(sub);
+  }
+}
+
+export function buildProgram(
+  io: Required<Pick<RunIo, 'stdout' | 'stderr'>> & Omit<RunIo, 'stdout' | 'stderr'> = {
+    stdout: process.stdout,
+    stderr: process.stderr,
+  },
+): Command {
   const program = new Command('ivora')
-    .description('Command-line client for the public Ivora /v1 API (pre-alpha: no commands yet).')
+    .description('Command-line client for the public Ivora /v1 API (pre-alpha).')
     .version(versionText(), '-v, --version', 'print the CLI and API versions')
     .option('--profile <name>', 'profile to use (default: the current profile, else "test")')
     .option('--live', 'use the live profile')
@@ -74,6 +130,34 @@ export function buildProgram(io: Required<Pick<RunIo, 'stdout' | 'stderr'>>): Co
     .action(function (this: Command) {
       io.stdout.write(this.helpInformation());
     });
+
+  const env = io.env ?? process.env;
+  const stdin = io.stdin ?? process.stdin;
+  let store: SecretStore | undefined = io.secrets;
+  const ctx: CommandContext = {
+    stdout: io.stdout,
+    stderr: io.stderr,
+    stdin,
+    env,
+    prompter: io.prompter ?? ttyPrompter(),
+    readSecret:
+      io.readSecret ?? ((prompt) => readHiddenLine(stdin as NodeJS.ReadStream, io.stderr, prompt)),
+    secrets: async () => (store ??= await openSecretStore()),
+    ...(io.fetch ? { fetch: io.fetch } : {}),
+    globals: () => program.opts<GlobalOptions>(),
+    out: () =>
+      new Output({
+        stdout: io.stdout,
+        stderr: io.stderr,
+        env,
+        json: program.opts<GlobalOptions>().json,
+      }),
+  };
+  program
+    .addCommand(loginCommand(ctx))
+    .addCommand(profilesCommand(ctx))
+    .addCommand(whoamiCommand(ctx));
+  inheritSettings(program);
   return program;
 }
 
@@ -81,7 +165,7 @@ export function buildProgram(io: Required<Pick<RunIo, 'stdout' | 'stderr'>>): Co
 export async function run(argv: string[], io: RunIo = {}): Promise<number> {
   const stdout = io.stdout ?? process.stdout;
   const stderr = io.stderr ?? process.stderr;
-  const program = buildProgram({ stdout, stderr });
+  const program = buildProgram({ ...io, stdout, stderr });
   try {
     await program.parseAsync(argv, { from: 'user' });
     return ExitCode.Ok;

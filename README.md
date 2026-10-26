@@ -9,8 +9,8 @@ The package will be published on npm as `@ivora/cli`, with the command `ivora`.
 ## Status
 
 **Pre-alpha scaffold.** This repository holds the build, test and CI setup and the shared
-library stubs (HTTP client, output, profiles, secret redaction, confirmations). No API command
-is implemented yet, and nothing has been published to npm. Do not use it against a live
+library stubs (HTTP client, output, profiles, secret redaction, confirmations). Implemented so
+far: `ivora login`, `ivora profiles` and `ivora whoami`. Nothing has been published to npm. Do not use it against a live
 account.
 
 Planned for the first release (v0.1):
@@ -22,6 +22,24 @@ Planned for the first release (v0.1):
 - tariff quotes and simulations, webhook endpoints, and `ivora api` for any public `/v1` path
 
 The CLI only calls the public `/v1` API. It has no staff or admin commands.
+
+## Authentication
+
+```sh
+printf '%s' "$KEY" | ivora login          # or type it at the hidden prompt
+ivora --live login                          # live is an explicit opt-in
+ivora whoami
+ivora profiles list | use <name> | remove <name>
+```
+
+- Keys are never accepted as command-line arguments. `ivora login` reads one from stdin, a
+  hidden prompt or `IVORA_API_KEY`, checks it with `GET /v1/access`, and stores it in the OS
+  keychain (macOS Keychain, or `secret-tool` on Linux). If there is no keychain the CLI refuses
+  to save the key rather than writing it to disk; use `IVORA_API_KEY` instead.
+- The config file (`~/.config/ivora/config.toml`) holds profile names, environments and key
+  references only, never keys.
+- Test keys (`iv_test_`) work with test profiles and live keys (`iv_live_`) with live profiles.
+  A live profile is never the default: pass `--live` (or `--profile <name>`) every time.
 
 ## Install from source
 
