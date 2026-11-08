@@ -10,7 +10,7 @@ The package will be published on npm as `@ivora/cli`, with the command `ivora`.
 
 **Pre-alpha scaffold.** This repository holds the build, test and CI setup and the shared
 library stubs (HTTP client, output, profiles, secret redaction, confirmations). Implemented so
-far: `ivora login`, `ivora profiles` and `ivora whoami`. Nothing has been published to npm. Do not use it against a live
+far: `ivora login`, `ivora profiles`, `ivora whoami` and the read-only resource commands below. Nothing has been published to npm. Do not use it against a live
 account.
 
 Planned for the first release (v0.1):
@@ -40,6 +40,29 @@ ivora profiles list | use <name> | remove <name>
   references only, never keys.
 - Test keys (`iv_test_`) work with test profiles and live keys (`iv_live_`) with live profiles.
   A live profile is never the default: pass `--live` (or `--profile <name>`) every time.
+
+## Read-only resources
+
+```sh
+ivora stations list [--name N] [--charger-id ID] [--limit N] [--after CURSOR] [--all]
+ivora stations get <station-id>
+ivora operations list [--status S] [--kind K] [--actor A] [--station-id ID] [--before CURSOR]
+ivora operations get <operation-id>
+ivora tariffs list [--include-archived] | get <tariff-id>
+ivora tariffs quote <tariff-id> --session session.json     # a read-only price computation
+ivora tariffs simulate --tariff tariff.json --session session.json
+ivora webhooks list | get <webhook-id>
+ivora api                                                   # list the callable operationIds
+ivora api locations_read_one_location --path location_id=1
+```
+
+- Output is a table by default and JSON with `--json`. List commands show one page and print the
+  next cursor on stderr; `--all` follows every page.
+- Commands use the key's only tenant, or `--tenant <id>` when it reaches several.
+- `ivora api <operationId>` calls only GET operations from the built-in catalog and prints JSON.
+  Anything that writes or controls a charger is refused until after the first publish.
+- Exit codes: 0 ok, 1 API or network error, 2 usage, 4 timeout, 5 authentication. Errors show the
+  API's error code and request id.
 
 ## Install from source
 

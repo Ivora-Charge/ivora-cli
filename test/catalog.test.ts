@@ -35,3 +35,19 @@ describe('command catalog', () => {
     );
   });
 });
+
+describe('catalog operationIds', () => {
+  const spec = loadSpec();
+
+  it('matches the operationId of every cataloged operation in the spec', () => {
+    for (const c of COMMANDS) {
+      const op = (spec.paths[c.path]?.[c.method.toLowerCase()] ?? {}) as { operationId?: string };
+      assert.equal(op.operationId, c.operationId, `${c.method} ${c.path}`);
+    }
+  });
+
+  it('has unique operationIds', () => {
+    const ids = COMMANDS.map((c) => c.operationId);
+    assert.equal(new Set(ids).size, ids.length);
+  });
+});

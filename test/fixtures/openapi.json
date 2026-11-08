@@ -14,13 +14,18 @@
               "application/json": {
                 "example": {
                   "environment": "test",
-                  "tenants": [{ "id": 42 }],
+                  "tenants": [
+                    {
+                      "id": 42
+                    }
+                  ],
                   "scopes": ["stations:read", "stations:write"]
                 }
               }
             }
           }
-        }
+        },
+        "operationId": "access_and_api_keys_discover_current_csms_access"
       }
     },
     "/v1/capabilities": {
@@ -29,11 +34,14 @@
           "200": {
             "content": {
               "application/json": {
-                "example": { "virtual_chargers": true }
+                "example": {
+                  "virtual_chargers": true
+                }
               }
             }
           }
-        }
+        },
+        "operationId": "getting_started_capabilities"
       }
     },
     "/v1/tenants/{tenant_id}/stations": {
@@ -56,18 +64,23 @@
               }
             }
           }
-        }
+        },
+        "operationId": "stations_list_tenant_charging_stations"
       },
       "post": {
         "responses": {
           "201": {
             "content": {
               "application/json": {
-                "example": { "id": "st_fixture_2", "charger_id": "FIXTURE-002" }
+                "example": {
+                  "id": "st_fixture_2",
+                  "charger_id": "FIXTURE-002"
+                }
               }
             }
           }
-        }
+        },
+        "operationId": "stations_register_a_station_and_return_it"
       }
     },
     "/v1/tenants/{tenant_id}/stations/{station_id}": {
@@ -76,16 +89,329 @@
           "200": {
             "content": {
               "application/json": {
-                "example": { "id": "st_fixture_1", "charger_id": "FIXTURE-001", "online": true }
+                "example": {
+                  "id": "st_fixture_1",
+                  "charger_id": "FIXTURE-001",
+                  "online": true,
+                  "last_seen": "2026-01-01T00:00:00Z"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "stations_read_station_and_connector_state"
+      }
+    },
+    "/v1/admin/example": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {}
               }
             }
           }
         }
       }
     },
-    "/v1/admin/example": {
+    "/v1/tenants/{tenant_id}/tariffs": {
       "get": {
-        "responses": { "200": { "content": { "application/json": { "example": {} } } } }
+        "operationId": "tariffs_and_bills_read_tenant_billing_tariffs",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": [
+                    {
+                      "id": 7,
+                      "name": "Fixture tariff",
+                      "currency": "EUR",
+                      "external_reference": null
+                    }
+                  ],
+                  "next_cursor": null
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tenants/{tenant_id}/tariffs/{tariff_id}": {
+      "get": {
+        "operationId": "tariffs_and_bills_read_one_tariff",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "id": 7,
+                  "name": "Fixture tariff",
+                  "currency": "EUR",
+                  "external_reference": null
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tenants/{tenant_id}/tariffs/{tariff_id}/quote": {
+      "post": {
+        "operationId": "tariffs_and_bills_quote_a_session_s_cost_under_a_stored_tariff",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "currency": "EUR",
+                  "total": "4.20",
+                  "lines": [
+                    {
+                      "type": "ENERGY",
+                      "amount": "4.20"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tenants/{tenant_id}/tariffs/simulate": {
+      "post": {
+        "operationId": "tariffs_and_bills_simulate_a_tariff_draft_against_a_session",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "currency": "EUR",
+                  "total": "4.20",
+                  "lines": [
+                    {
+                      "type": "ENERGY",
+                      "amount": "4.20"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tenants/{tenant_id}/operations": {
+      "get": {
+        "operationId": "charging_and_operations_list_the_project_s_operations",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": [
+                    {
+                      "id": "op_fixture_1",
+                      "kind": "reset",
+                      "status": "succeeded",
+                      "actor": "api",
+                      "station_id": "st_fixture_1",
+                      "created_at": "2026-01-01T00:00:00Z"
+                    }
+                  ],
+                  "next_cursor": null
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tenants/{tenant_id}/operations/{operation_id}": {
+      "get": {
+        "operationId": "charging_and_operations_inspect_an_operation_without_redispatching_it",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "id": "op_fixture_1",
+                  "kind": "reset",
+                  "status": "succeeded",
+                  "actor": "api",
+                  "station_id": "st_fixture_1",
+                  "created_at": "2026-01-01T00:00:00Z"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tenants/{tenant_id}/webhooks": {
+      "get": {
+        "operationId": "webhooks_and_events_list_webhook_endpoints",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": [
+                    {
+                      "id": 3,
+                      "url": "https://example.com/hook",
+                      "status": "active",
+                      "events": ["transaction.completed"]
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tenants/{tenant_id}/webhooks/{webhook_id}": {
+      "get": {
+        "operationId": "webhooks_and_events_read_one_webhook_endpoint",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "id": 3,
+                  "url": "https://example.com/hook",
+                  "status": "active",
+                  "events": ["transaction.completed"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tenants/{tenant_id}/webhooks/{webhook_id}/deliveries": {
+      "get": {
+        "operationId": "webhooks_and_events_read_delivery_attempts_for_an_endpoint",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": []
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tenants/{tenant_id}/events": {
+      "get": {
+        "operationId": "webhooks_and_events_poll_tenant_events_by_cursor",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": [],
+                  "next_cursor": null
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tenants/{tenant_id}/locations": {
+      "get": {
+        "operationId": "locations_list_tenant_locations",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": [
+                    {
+                      "id": 1,
+                      "name": "Fixture site"
+                    }
+                  ],
+                  "next_cursor": null
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tenants/{tenant_id}/locations/{location_id}": {
+      "get": {
+        "operationId": "locations_read_one_location",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "id": 1,
+                  "name": "Fixture site"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tenants/{tenant_id}/transactions": {
+      "get": {
+        "operationId": "charging_and_operations_read_charging_usage_and_realized_billing",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": [],
+                  "next_cursor": null
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tenants/{tenant_id}/transactions/{transaction_id}": {
+      "get": {
+        "operationId": "charging_and_operations_read_one_transaction_in_detail",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "id": 1
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/currencies": {
+      "get": {
+        "operationId": "tariffs_and_bills_list_the_supported_currencies",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": ["EUR", "USD"]
+                }
+              }
+            }
+          }
+        }
       }
     }
   }

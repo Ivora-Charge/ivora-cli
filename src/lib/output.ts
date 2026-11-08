@@ -70,6 +70,11 @@ export class Output {
     this.stdout.write(redact(String(data)) + '\n');
   }
 
+  /** Writes any value as pretty JSON, in both modes (for arbitrary API responses). */
+  rawJson(data: unknown): void {
+    this.stdout.write(redact(JSON.stringify(data ?? null, null, 2)) + '\n');
+  }
+
   /** Writes a human line to stdout (not used in --json mode). */
   line(text: string): void {
     if (!this.json) this.stdout.write(redact(text) + '\n');
