@@ -65,6 +65,54 @@ describe('ivora stations', () => {
     await t.cleanup();
   });
 
+  it('ends when the last page echoes the cursor sent, or comes back empty or short', async () => {
+    const page = (ids: string[], next: number | null) => ({
+      status: 200,
+      body: { data: ids.map((id) => ({ id, charger_id: id })), next_cursor: next },
+    });
+    type Out = { data: { id: string }[]; next_cursor: unknown };
+
+    // --all: the last page returns next_cursor = the cursor that was sent.
+    const s = await sandbox(api);
+    api.enqueue('GET', '/v1/tenants/42/stations', page(['a'], 10));
+    api.enqueue('GET', '/v1/tenants/42/stations', page(['b'], 10));
+    const before = calls(api).length;
+    assert.equal(await s.go(['stations', 'list', '--all', '--json']), ExitCode.Ok);
+    const all = JSON.parse(s.out.text) as Out;
+    assert.deepEqual(
+      all.data.map((r) => r.id),
+      ['a', 'b'],
+    );
+    assert.equal(all.next_cursor, null);
+    assert.equal(calls(api).length - before, 2);
+
+    // One page, continuing from --after 10: the echoed cursor means no hint and a null cursor.
+    const t = await sandbox(api);
+    api.enqueue('GET', '/v1/tenants/42/stations', page(['b'], 10));
+    assert.equal(await t.go(['stations', 'list', '--after', '10']), ExitCode.Ok);
+    assert.doesNotMatch(t.err.text, /More results/);
+    api.enqueue('GET', '/v1/tenants/42/stations', page(['b'], 10));
+    assert.equal(await t.go(['stations', 'list', '--after', '10', '--json']), ExitCode.Ok);
+    assert.equal((JSON.parse(t.out.text.slice(t.out.text.indexOf('{'))) as Out).next_cursor, null);
+
+    // An empty page, then a page shorter than --limit, both end the listing.
+    const u = await sandbox(api);
+    api.enqueue('GET', '/v1/tenants/42/stations', page([], 11));
+    assert.equal(await u.go(['stations', 'list', '--after', '10']), ExitCode.Ok);
+    assert.doesNotMatch(u.err.text, /More results/);
+    api.enqueue('GET', '/v1/tenants/42/stations', page(['a'], 12));
+    assert.equal(await u.go(['stations', 'list', '--limit', '5']), ExitCode.Ok);
+    assert.doesNotMatch(u.err.text, /More results/);
+
+    // A full page keeps the API's integer cursor in JSON.
+    const v = await sandbox(api);
+    api.enqueue('GET', '/v1/tenants/42/stations', page(['a', 'b'], 12));
+    assert.equal(await v.go(['stations', 'list', '--limit', '2', '--json']), ExitCode.Ok);
+    assert.equal((JSON.parse(v.out.text) as Out).next_cursor, 12);
+
+    for (const x of [s, t, u, v]) await x.cleanup();
+  });
+
   it('gets one station and encodes the id', async () => {
     const s = await sandbox(api);
     assert.equal(await s.go(['stations', 'get', 'st_fixture_1']), ExitCode.Ok);

@@ -57,7 +57,10 @@ ivora api locations_read_one_location --path location_id=1
 ```
 
 - Output is a table by default and JSON with `--json`. List commands show one page and print the
-  next cursor on stderr; `--all` follows every page.
+  next cursor on stderr; `--all` follows every page. In `--json` output `next_cursor` is `null`
+  once the listing has reached its end.
+- With `--json`, results go to stdout as JSON; errors stay plain text on stderr
+  (`error: ...`), and the exit code tells scripts what happened.
 - Commands use the key's only tenant, or `--tenant <id>` when it reaches several.
 - `ivora api <operationId>` calls only GET operations from the built-in catalog and prints JSON.
   Anything that writes or controls a charger is refused until after the first publish.

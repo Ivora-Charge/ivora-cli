@@ -104,7 +104,9 @@ export async function runList(
   const cursorOpt = opts[spec.cursorParam];
   let cursor = typeof cursorOpt === 'string' ? cursorOpt : undefined;
   const rows: unknown[] = [];
-  let next: string | undefined;
+  // The API's next_cursor, kept with its type (an integer for some collections). Undefined
+  // means the listing reached its end.
+  let next: string | number | undefined;
   for (let pages = 0; ; pages++) {
     const res = await callOperation<Page>(
       s,
@@ -113,12 +115,23 @@ export async function runList(
       { query: { ...filters, limit, [spec.cursorParam]: cursor } },
     );
     const body = res.data ?? {};
-    if (Array.isArray(body.data)) rows.push(...body.data);
-    const nc = body.next_cursor;
-    next = nc === null || nc === undefined || nc === '' ? undefined : String(nc);
-    if (!opts.all || next === undefined) break;
-    if (next === cursor || pages + 1 >= MAX_PAGES) break;
-    cursor = next;
+    const pageRows = Array.isArray(body.data) ? body.data : [];
+    rows.push(...pageRows);
+    next = cursorValue(body.next_cursor);
+    // Some collections never return a null cursor: on the last page they echo the cursor that
+    // was sent. Treat an empty page, an echoed cursor or a short page as the end.
+    const last =
+      next === undefined ||
+      pageRows.length === 0 ||
+      String(next) === cursor ||
+      (limit !== undefined && pageRows.length < limit);
+    if (last) {
+      next = undefined;
+      break;
+    }
+    // Keep `next` when one page was asked for, or when MAX_PAGES cut the listing short.
+    if (!opts.all || pages + 1 >= MAX_PAGES) break;
+    cursor = String(next);
   }
   const out = ctx.out();
   if (out.json) {
@@ -127,6 +140,12 @@ export async function runList(
   }
   out.result(rows as Record<string, unknown>[], spec.columns);
   if (next !== undefined) out.info(`More results: pass --${spec.cursorParam} ${next} (or --all).`);
+}
+
+function cursorValue(nc: unknown): string | number | undefined {
+  if (typeof nc === 'number' && Number.isFinite(nc)) return nc;
+  if (typeof nc === 'string' && nc !== '') return nc;
+  return undefined;
 }
 
 export function addListOptions(cmd: Command, cursorParam: 'after' | 'before'): Command {
