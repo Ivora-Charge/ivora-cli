@@ -24,7 +24,7 @@ Requires Node.js 22.12 or later. To build from source instead, see
 the read-only resource commands below (stations, operations, tariffs, webhooks, and `ivora api`
 for GET operations). Behaviour and output may still change between releases.
 
-Not yet available (planned for later releases; the CLI cannot change anything yet):
+Not yet available (planned for later releases; the CLI cannot change anything on your account yet):
 
 - station commands that write: add, connect, decommission
 - remote commands: trigger, reset, unlock, start, stop, with confirmations
@@ -78,6 +78,18 @@ ivora api locations_read_one_location --path location_id=1
   Anything that writes or controls a charger is refused in this release.
 - Exit codes: 0 ok, 1 API or network error, 2 usage, 4 timeout, 5 authentication. Errors show the
   API's error code and request id.
+
+## Troubleshooting
+
+**`command not found: ivora` after `npm install -g`.** npm's global bin directory is not on
+your `PATH`. Add it, for example in `~/.zshrc` or `~/.bashrc`:
+
+```sh
+export PATH="$(npm prefix -g)/bin:$PATH"
+```
+
+Then open a new terminal. Alternatively, use a Node.js installed with Homebrew or nvm, which
+puts global commands on your `PATH` already.
 
 ## Install from source
 
