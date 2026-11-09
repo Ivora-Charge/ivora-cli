@@ -8,7 +8,7 @@ The package will be published on npm as `@ivora/cli`, with the command `ivora`.
 
 ## Status
 
-**Pre-alpha scaffold.** This repository holds the build, test and CI setup and the shared
+**v0.1 (first release, read-only).** This repository holds the build, test and CI setup and the shared
 library stubs (HTTP client, output, profiles, secret redaction, confirmations). Implemented so
 far: `ivora login`, `ivora profiles`, `ivora whoami` and the read-only resource commands below. Nothing has been published to npm. Do not use it against a live
 account.

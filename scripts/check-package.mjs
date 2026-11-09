@@ -18,6 +18,14 @@ if (pkg.publishConfig?.access !== 'public') errors.push('publishConfig.access mu
 if (pkg.publishConfig?.provenance !== true) errors.push('publishConfig.provenance must be true');
 if (!pkg.scripts?.prepublishOnly?.includes('guard-publish'))
   errors.push('prepublishOnly guard missing');
+if (!/^\d+\.\d+\.\d+$/.test(pkg.version ?? ''))
+  errors.push(`version ${pkg.version} is not a plain release version`);
+if (pkg.bin?.ivora !== 'dist/bin/ivora.js') errors.push('bin.ivora must be dist/bin/ivora.js');
+for (const field of ['dependencies', 'devDependencies', 'optionalDependencies']) {
+  for (const [dep, range] of Object.entries(pkg[field] ?? {}))
+    if (/^(git|github|file|link|https?):|\//.test(range))
+      errors.push(`${dep} uses a non-registry source`);
+}
 for (const hook of ['preinstall', 'install', 'postinstall', 'prepare']) {
   if (pkg.scripts?.[hook]) errors.push(`package.json must not define a "${hook}" script`);
 }
@@ -41,7 +49,10 @@ const packJson =
       });
 const files = JSON.parse(packJson)[0].files.map((f) => f.path);
 const allowed = (p) =>
-  p === 'package.json' || p === 'README.md' || p === 'LICENSE' || /^dist\/.+\.js$/.test(p);
+  p === 'package.json' ||
+  p === 'README.md' ||
+  p === 'LICENSE' ||
+  (/^dist\/.+\.js$/.test(p) && !/^dist\/test\//.test(p));
 for (const p of files) {
   if (!allowed(p)) errors.push(`unexpected file in package: ${p}`);
 }

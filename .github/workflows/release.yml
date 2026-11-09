@@ -1,8 +1,10 @@
-# Release DRY RUN. Builds, tests and packs the tarball, checks the package metadata that npm
-# provenance needs, and uploads the tarball as a workflow artifact. It never publishes: there
-# is no `npm publish`, no npm token and no id-token permission. Publishing is added in a later,
-# separately approved change (npm trusted publishing with provenance).
-name: Release (dry run)
+# Release. The `pack` job is a dry run for every v* tag and manual run: it builds, tests and
+# packs the tarball and checks the package metadata that npm provenance needs. It never publishes.
+# The `publish` job runs ONLY for a v* tag whose commit is on main, in the `npm-publish`
+# GitHub Environment (required reviewer approves), and publishes with npm trusted publishing
+# (OIDC) and provenance. There is no npm token secret anywhere. id-token: write is granted to
+# the publish job only.
+name: Release
 
 on:
   workflow_dispatch:
@@ -52,3 +54,49 @@ jobs:
           path: '*.tgz'
           if-no-files-found: error
           retention-days: 7
+
+  publish:
+    needs: pack
+    if: github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: npm-publish
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Tagged commit is on main
+        run: |
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          git merge-base --is-ancestor "${GITHUB_SHA}" origin/main || { echo "${GITHUB_REF_NAME} is not on main"; exit 1; }
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Tag matches package version
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          test "v${version}" = "${GITHUB_REF_NAME}" || { echo "tag ${GITHUB_REF_NAME} != v${version}"; exit 1; }
+      - name: Install (no install scripts)
+        run: npm ci --ignore-scripts
+      - name: Verify dependency signatures and attestations
+        run: npm audit signatures
+      - name: Build and test
+        run: |
+          npm run build
+          npm run lint
+          npm test
+      - name: Package checks
+        run: |
+          npm pack --ignore-scripts --json > pack.json
+          node scripts/check-package.mjs --pack-json pack.json
+      # Trusted publishing needs npm 11.5.1 or later; Node 22 ships an older npm.
+      - name: Use npm with trusted publishing support
+        run: npm install -g npm@11.5.1 --ignore-scripts
+      - name: Publish with provenance (trusted publishing, no token)
+        env:
+          IVORA_RELEASE_PUBLISH: '1'
+        run: npm publish --provenance --access public
