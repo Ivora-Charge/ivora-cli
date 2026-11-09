@@ -44,6 +44,7 @@ describe('publish guard', () => {
   const good = (): Record<string, string> => ({
     PATH: process.env.PATH ?? '',
     GITHUB_ACTIONS: 'true',
+    GITHUB_EVENT_NAME: 'push',
     GITHUB_WORKFLOW_REF: 'Ivora-Charge/ivora-cli/.github/workflows/release.yml@refs/tags/v0.1.0',
     IVORA_RELEASE_PUBLISH: '1',
     GITHUB_REF_TYPE: 'tag',
@@ -68,6 +69,11 @@ describe('publish guard', () => {
     const r = run({ ...good(), GITHUB_REF_TYPE: 'branch', GITHUB_REF: 'refs/heads/main' });
     assert.equal(r.status, 1);
     assert.match(r.stderr, /not a v\* tag/);
+  });
+  it('refuses a manual run on a tag ref', () => {
+    const r = run({ ...good(), GITHUB_EVENT_NAME: 'workflow_dispatch' });
+    assert.equal(r.status, 1);
+    assert.match(r.stderr, /not triggered by a tag push/);
   });
   it('refuses a tag whose commit is not on main', () => {
     git(repo, 'checkout', '-q', sideSha);
@@ -115,8 +121,21 @@ describe('publish guard', () => {
 
 describe('check-package', () => {
   let dir: string;
-  const packJson = (files: string[]) =>
-    JSON.stringify([{ files: files.map((path) => ({ path })) }]);
+  const version = (
+    JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')) as {
+      version: string;
+    }
+  ).version;
+  const packJson = (files: string[], over: Record<string, string> = {}) =>
+    JSON.stringify([
+      {
+        name: '@ivora/cli',
+        version,
+        filename: `ivora-cli-${version}.tgz`,
+        ...over,
+        files: files.map((path) => ({ path })),
+      },
+    ]);
   const okFiles = ['package.json', 'README.md', 'LICENSE', 'dist/bin/ivora.js', 'dist/src/a.js'];
 
   before(() => {
@@ -126,8 +145,8 @@ describe('check-package', () => {
   });
   after(() => rmSync(dir, { recursive: true, force: true }));
 
-  const run = (files: string[]) => {
-    writeFileSync(join(dir, 'pack.json'), packJson(files));
+  const run = (files: string[], over: Record<string, string> = {}) => {
+    writeFileSync(join(dir, 'pack.json'), packJson(files, over));
     return spawnSync('node', [check, '--pack-json', 'pack.json'], { cwd: dir, encoding: 'utf8' });
   };
 
@@ -147,6 +166,10 @@ describe('check-package', () => {
       assert.equal(r.status, 1, bad);
       assert.match(r.stderr, /unexpected file/);
     }
+  });
+  it('refuses a pack that does not match package.json', () => {
+    assert.match(run(okFiles, { version: '0.0.9' }).stderr, /does not match package\.json/);
+    assert.match(run(okFiles, { filename: 'other.tgz' }).stderr, /packed tarball is other\.tgz/);
   });
   it('refuses a package missing its binary', () => {
     const r = run(okFiles.filter((f) => f !== 'dist/bin/ivora.js'));

@@ -1,5 +1,6 @@
-// prepublishOnly guard: `npm publish` is allowed only from the `publish` job of the release
-// workflow, on a v* tag whose commit is on origin/main, with the tag equal to package.json's
+// Publish guard, run as prepublishOnly and as an explicit step in the release workflow's
+// `publish` job (prepublishOnly does not run when a tarball is published). Publishing is allowed
+// only from that job, for a pushed v* tag (not a manual run) whose commit is on origin/main, with the tag equal to package.json's
 // version, with OIDC (trusted publishing, hence provenance) available and with no npm token.
 // Everything else, including every local machine, is refused.
 // Runs in the current directory; the checks read package.json and git from there.
@@ -12,6 +13,7 @@ export function publishRefusals(env, cwd = process.cwd()) {
   if (!/\/\.github\/workflows\/release\.yml@/.test(env.GITHUB_WORKFLOW_REF ?? ''))
     why.push('not run from .github/workflows/release.yml');
   if (env.IVORA_RELEASE_PUBLISH !== '1') why.push('publish opt-in (IVORA_RELEASE_PUBLISH) not set');
+  if (env.GITHUB_EVENT_NAME !== 'push') why.push('not triggered by a tag push');
   if (env.GITHUB_REF_TYPE !== 'tag' || !(env.GITHUB_REF ?? '').startsWith('refs/tags/v'))
     why.push('not a v* tag');
 

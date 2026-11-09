@@ -57,7 +57,8 @@ jobs:
 
   publish:
     needs: pack
-    if: github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v')
+    # Only a pushed v* tag reaches publish; a manual run (workflow_dispatch) on a tag ref does not.
+    if: github.event_name == 'push' && github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: npm-publish
@@ -89,14 +90,38 @@ jobs:
           npm run build
           npm run lint
           npm test
-      - name: Package checks
-        run: |
-          npm pack --ignore-scripts --json > pack.json
-          node scripts/check-package.mjs --pack-json pack.json
-      # Trusted publishing needs npm 11.5.1 or later; Node 22 ships an older npm.
+      # Trusted publishing needs npm 11.5.1 or later; Node 22 ships an older npm. Installed before
+      # packing so the same npm packs and publishes.
       - name: Use npm with trusted publishing support
         run: npm install -g npm@11.5.1 --ignore-scripts
-      - name: Publish with provenance (trusted publishing, no token)
+      # The tarball is packed exactly once, here, from the build above. The same file is checked,
+      # hashed and published; nothing is re-packed or rebuilt after this step.
+      - name: Pack once
+        id: pack
+        run: |
+          npm pack --ignore-scripts --json > pack.json
+          cat pack.json
+          tarball="$(node -p "require('./pack.json')[0].filename")"
+          version="$(node -p "require('./package.json').version")"
+          test "${tarball}" = "ivora-cli-${version}.tgz" || { echo "unexpected tarball ${tarball}"; exit 1; }
+          echo "tarball=${tarball}" >> "${GITHUB_OUTPUT}"
+      - name: Package checks on the packed tarball
+        run: node scripts/check-package.mjs --pack-json pack.json
+      # prepublishOnly does not run when publishing a tarball, so the guard runs explicitly.
+      - name: Publish guard
         env:
           IVORA_RELEASE_PUBLISH: '1'
-        run: npm publish --provenance --access public
+        run: node scripts/guard-publish.mjs
+      - name: Tarball digest (matches the checked pack)
+        env:
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+        run: |
+          sha256sum "./${TARBALL}"
+          expected="$(node -p "require('./pack.json')[0].shasum")"
+          actual="$(sha1sum "./${TARBALL}" | cut -d' ' -f1)"
+          test "${actual}" = "${expected}" || { echo "tarball differs from the checked pack"; exit 1; }
+      - name: Publish the checked tarball with provenance (trusted publishing, no token)
+        env:
+          IVORA_RELEASE_PUBLISH: '1'
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+        run: npm publish "./${TARBALL}" --provenance --access public

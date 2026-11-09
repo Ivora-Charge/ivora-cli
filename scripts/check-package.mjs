@@ -2,7 +2,7 @@
 // - package.json: public scoped package, Apache-2.0, provenance on, repository matching the
 //   GitHub repository (npm requires the match for provenance), no install scripts;
 // - package-lock.json: no dependency with install scripts;
-// - the packed tarball: only the intended files.
+// - the packed tarball: name, version and file name match package.json; only the intended files.
 // Usage: node scripts/check-package.mjs [--pack-json <file from `npm pack --json`>]
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -47,7 +47,12 @@ const packJson =
     : execFileSync('npm', ['pack', '--dry-run', '--json', '--ignore-scripts'], {
         encoding: 'utf8',
       });
-const files = JSON.parse(packJson)[0].files.map((f) => f.path);
+const pack = JSON.parse(packJson)[0];
+if (pack.name !== pkg.name || pack.version !== pkg.version)
+  errors.push(`packed ${pack.name}@${pack.version} does not match package.json`);
+if (pack.filename !== `ivora-cli-${pkg.version}.tgz`)
+  errors.push(`packed tarball is ${pack.filename}, expected ivora-cli-${pkg.version}.tgz`);
+const files = pack.files.map((f) => f.path);
 const allowed = (p) =>
   p === 'package.json' ||
   p === 'README.md' ||
