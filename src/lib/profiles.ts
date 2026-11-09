@@ -27,6 +27,10 @@ export interface Profile {
   baseUrl?: string;
   /** Secret-store reference for the API key. Never the key itself. */
   keyRef?: string;
+  /** "oauth" after a browser sign-in; absent for an API-key profile. Tokens are in the keychain. */
+  authType?: 'oauth';
+  /** When the stored OAuth access token expires (epoch seconds). Not a secret. */
+  tokenExpiresAt?: number;
   tenantId?: string;
 }
 
@@ -103,6 +107,9 @@ export function serializeConfig(config: ProfileConfig): string {
     lines.push(`[profiles.${name}]`, `environment = ${q(p.environment)}`);
     if (p.baseUrl) lines.push(`base_url = ${q(p.baseUrl)}`);
     if (p.keyRef) lines.push(`key_ref = ${q(p.keyRef)}`);
+    if (p.authType) lines.push(`auth_type = ${q(p.authType)}`);
+    if (p.tokenExpiresAt !== undefined)
+      lines.push(`token_expires_at = ${q(String(p.tokenExpiresAt))}`);
     if (p.tenantId) lines.push(`tenant_id = ${q(p.tenantId)}`);
     lines.push('');
   }
@@ -147,6 +154,10 @@ export function parseConfig(text: string): ProfileConfig {
       environment: f.environment,
       ...(f.base_url ? { baseUrl: f.base_url } : {}),
       ...(f.key_ref ? { keyRef: f.key_ref } : {}),
+      ...(f.auth_type === 'oauth' ? { authType: 'oauth' as const } : {}),
+      ...(f.token_expires_at && /^\d{1,12}$/.test(f.token_expires_at)
+        ? { tokenExpiresAt: Number(f.token_expires_at) }
+        : {}),
       ...(f.tenant_id ? { tenantId: f.tenant_id } : {}),
     };
   }

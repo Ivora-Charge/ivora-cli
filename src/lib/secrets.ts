@@ -39,7 +39,8 @@ export function redactHeaders(headers: Record<string, string>): Record<string, s
   return out;
 }
 
-const SECRET_FIELD = /password|secret|api_?key|authorization/i;
+const SECRET_FIELD =
+  /password|secret|api_?key|authorization|(access|refresh|id)_token|code_verifier/i;
 
 /** Returns a deep copy of a JSON body with password, secret and key fields replaced. */
 export function redactBody(value: unknown): unknown {
@@ -86,7 +87,8 @@ export class MemorySecretStore implements SecretStore {
 
 const SERVICE = 'ivora-cli';
 const REF = /^[A-Za-z0-9:_-]{1,80}$/;
-const KEYCHAIN_SECRET = /^[A-Za-z0-9_-]{8,200}$/;
+// Stricter than any real key or token (no spaces, quotes or shell characters).
+const KEYCHAIN_SECRET = /^[A-Za-z0-9._~+/=-]{8,4096}$/;
 
 export interface ExecResult {
   code: number;
@@ -139,9 +141,9 @@ export class KeychainSecretStore implements SecretStore {
 
   async set(ref: string, secret: string): Promise<void> {
     this.check(ref);
-    // Stricter than any real key, so the value is safe in the `security -i` command line.
+    // The charset keeps the value safe in the `security -i` command line.
     if (!KEYCHAIN_SECRET.test(secret)) {
-      throw new CliError('The key has an unexpected format.', ExitCode.Usage);
+      throw new CliError('The credential has an unexpected format.', ExitCode.Usage);
     }
     const r =
       this.platform === 'darwin'
@@ -152,12 +154,12 @@ export class KeychainSecretStore implements SecretStore {
           )
         : await this.exec(
             'secret-tool',
-            ['store', '--label=Ivora CLI API key', 'service', SERVICE, 'account', ref],
+            ['store', '--label=Ivora CLI credential', 'service', SERVICE, 'account', ref],
             secret,
           );
     if (r.code !== 0) {
       throw new CliError(
-        'Could not save the key in the OS keychain. Use the IVORA_API_KEY environment variable instead.',
+        'Could not save the credential in the OS keychain. Use the IVORA_API_KEY environment variable instead.',
         ExitCode.ApiError,
       );
     }

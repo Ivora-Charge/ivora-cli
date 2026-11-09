@@ -2,8 +2,10 @@ import { Command, CommanderError, InvalidArgumentError, Option } from 'commander
 import { CliError, ExitCode, Output, type Writable } from './lib/output.js';
 import { ttyPrompter, type Prompter } from './lib/confirm.js';
 import { openSecretStore, type SecretStore } from './lib/secrets.js';
+import { openInBrowser, type OpenUrl } from './lib/oauth.js';
 import type { CommandContext } from './lib/session.js';
 import { loginCommand } from './commands/login.js';
+import { logoutCommand } from './commands/logout.js';
 import { profilesCommand } from './commands/profiles.js';
 import { whoamiCommand } from './commands/whoami.js';
 import { stationsCommand } from './commands/stations.js';
@@ -39,6 +41,8 @@ export interface RunIo {
   secrets?: SecretStore;
   readSecret?: (prompt: string) => Promise<string>;
   fetch?: typeof fetch;
+  /** Replaces opening the browser (tests). */
+  openUrl?: OpenUrl;
 }
 
 /** Reads a line from the terminal without echoing it. */
@@ -149,6 +153,7 @@ export function buildProgram(
       io.readSecret ?? ((prompt) => readHiddenLine(stdin as NodeJS.ReadStream, io.stderr, prompt)),
     secrets: async () => (store ??= await openSecretStore()),
     ...(io.fetch ? { fetch: io.fetch } : {}),
+    openUrl: io.openUrl ?? openInBrowser,
     globals: () => program.opts<GlobalOptions>(),
     out: () =>
       new Output({
@@ -160,6 +165,7 @@ export function buildProgram(
   };
   program
     .addCommand(loginCommand(ctx))
+    .addCommand(logoutCommand(ctx))
     .addCommand(profilesCommand(ctx))
     .addCommand(whoamiCommand(ctx))
     .addCommand(stationsCommand(ctx))

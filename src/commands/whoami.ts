@@ -5,7 +5,9 @@ import { openSession, type CommandContext } from '../lib/session.js';
 
 export function whoamiCommand(ctx: CommandContext): Command {
   return new Command('whoami')
-    .description('show the profile, environment, tenant and scopes of the current key')
+    .description(
+      'show the profile, auth type (OAuth or API key), environment, tenant and granted scopes',
+    )
     .action(async () => {
       const s = await openSession(ctx);
       const access = (await s.client.request<Access>('GET', '/v1/access')).data ?? {};
@@ -16,6 +18,7 @@ export function whoamiCommand(ctx: CommandContext): Command {
       const result = {
         profile: s.profile.name,
         environment: accessEnvironment(access) ?? s.profile.environment,
+        auth: s.authType === 'oauth' ? 'oauth' : 'api_key',
         api_base: s.baseUrl,
         tenant_id: tenants.length === 1 ? tenants[0] : undefined,
         tenants,

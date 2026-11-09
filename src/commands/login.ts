@@ -14,7 +14,18 @@ import {
 } from '../lib/profiles.js';
 import { accessEnvironment, defaultTenant, type Access } from '../lib/access.js';
 import { displayPrefix } from '../lib/secrets.js';
-import type { CommandContext } from '../lib/session.js';
+import { saveTokens, type CommandContext } from '../lib/session.js';
+import {
+  buildAuthorizeUrl,
+  createPkce,
+  exchangeCode,
+  fetchOAuthMetadata,
+  oauthRefs,
+  randomState,
+  revokeToken,
+  startLoopbackListener,
+  type OAuthMetadata,
+} from '../lib/oauth.js';
 
 async function readAll(stream: NodeJS.ReadableStream): Promise<string> {
   let text = '';
@@ -37,14 +48,85 @@ async function obtainKey(ctx: CommandContext): Promise<string> {
 
 interface LoginOptions {
   baseUrl?: string;
+  withKey?: boolean;
+}
+
+export const NO_OAUTH_NOTICE = 'OAuth not available on this environment; paste an API key';
+
+/** Browser sign-in: PKCE, a 127.0.0.1 callback, and a state check. Returns the verified token. */
+async function browserLogin(
+  ctx: CommandContext,
+  meta: OAuthMetadata,
+  baseUrl: string,
+  environment: 'test' | 'live',
+  profile: Profile,
+): Promise<void> {
+  const out = ctx.out();
+  const pkce = createPkce();
+  const state = randomState();
+  const listener = await startLoopbackListener(state);
+  let tokens;
+  try {
+    const url = buildAuthorizeUrl(meta, {
+      redirectUri: listener.redirectUri,
+      state,
+      challenge: pkce.challenge,
+    });
+    out.info('Opening your browser to sign in. If it does not open, visit this URL:');
+    out.info(url);
+    await ctx.openUrl(url);
+    const code = await listener.waitForCode();
+    tokens = await exchangeCode(
+      meta,
+      { code, verifier: pkce.verifier, redirectUri: listener.redirectUri },
+      ctx.fetch,
+    );
+  } finally {
+    await listener.close();
+  }
+
+  // Verify before saving anything; on a mismatch, give the tokens back to the server.
+  const client = new ApiClient({
+    baseUrl,
+    apiKey: tokens.accessToken,
+    apiVersion: ctx.globals().apiVersion,
+    authType: 'oauth',
+    ...(ctx.fetch ? { fetch: ctx.fetch } : {}),
+  });
+  const discard = async (): Promise<void> => {
+    await revokeToken(meta, tokens.accessToken, 'access_token', ctx.fetch);
+    if (tokens.refreshToken)
+      await revokeToken(meta, tokens.refreshToken, 'refresh_token', ctx.fetch);
+  };
+  let access: Access;
+  try {
+    access = (await client.request<Access>('GET', '/v1/access')).data ?? {};
+    const serverEnvironment = accessEnvironment(access);
+    if (serverEnvironment && serverEnvironment !== environment) {
+      throw new CliError(
+        `The server says this is a ${serverEnvironment} sign-in, not a ${environment} one. Nothing was saved.`,
+        ExitCode.Usage,
+      );
+    }
+  } catch (err) {
+    await discard();
+    throw err;
+  }
+  const tenantId = defaultTenant(access, (text) => out.info(`note: ${text}`));
+  if (tenantId) profile.tenantId = tenantId;
+  else delete profile.tenantId;
+  await saveTokens(ctx, profile, tokens);
 }
 
 export function loginCommand(ctx: CommandContext): Command {
   return new Command('login')
     .description(
-      'verify an API key and save it to a profile (key from stdin, prompt or IVORA_API_KEY)',
+      'sign in with the browser (OAuth), or with --with-key save an API key (stdin, prompt or IVORA_API_KEY)',
     )
     .addOption(new Option('--base-url <url>', 'API origin to store with the profile'))
+    .addOption(
+      new Option('--with-key', 'use an API key instead of the browser (for CI and scripts)'),
+    )
     .action(async (opts: LoginOptions) => {
       const g = ctx.globals();
       const config = await loadConfig(ctx.env);
@@ -67,6 +149,31 @@ export function loginCommand(ctx: CommandContext): Command {
         ...(opts.baseUrl ? { baseUrl: validateBaseUrl(opts.baseUrl) } : {}),
         keyRef: keyRefFor(name),
       };
+      const out = ctx.out();
+
+      if (!opts.withKey) {
+        const baseUrl = resolveBaseUrl(profile, ctx.env, (text) => out.info(`note: ${text}`));
+        const meta = await fetchOAuthMetadata(baseUrl, ctx.fetch);
+        if (meta) {
+          delete profile.keyRef;
+          profile.authType = 'oauth';
+          await browserLogin(ctx, meta, baseUrl, environment, profile);
+          // Replace any earlier API key for this profile.
+          if (existing?.keyRef) await (await ctx.secrets()).delete(existing.keyRef);
+          config.profiles[name] = profile;
+          if (environment === 'test') config.current ??= name;
+          await saveConfig(config, ctx.env);
+          out.result({
+            profile: name,
+            environment,
+            auth: 'oauth',
+            tenant_id: profile.tenantId,
+            api_base: baseUrl,
+          });
+          return;
+        }
+        out.info(NO_OAUTH_NOTICE);
+      }
 
       const apiKey = await obtainKey(ctx);
       assertKeyMatchesProfile(apiKey, profile);
@@ -92,12 +199,19 @@ export function loginCommand(ctx: CommandContext): Command {
       else delete profile.tenantId;
 
       await (await ctx.secrets()).set(profile.keyRef as string, apiKey);
+      if (existing?.authType === 'oauth') {
+        // Switching from browser sign-in to a key: drop the stored tokens (local only).
+        const refs = oauthRefs(name);
+        await (await ctx.secrets()).delete(refs.access);
+        await (await ctx.secrets()).delete(refs.refresh);
+      }
+      delete profile.authType;
+      delete profile.tokenExpiresAt;
       config.profiles[name] = profile;
       // Only a test profile may become the default; live always needs --live.
       if (environment === 'test') config.current ??= name;
       await saveConfig(config, ctx.env);
 
-      const out = ctx.out();
       out.result({
         profile: name,
         environment,

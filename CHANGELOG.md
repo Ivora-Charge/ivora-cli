@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- `ivora login` signs in through the browser (OAuth authorization code flow with PKCE S256 and a
+  127.0.0.1 loopback callback) where the environment advertises it, and otherwise falls back to
+  the API-key prompt. `ivora login --with-key` keeps the key path for CI and scripts.
+- OAuth tokens live in the OS keychain only, refresh silently, and `ivora logout` revokes them
+  server-side. `ivora whoami` and `ivora profiles list` show the auth type.
+
 ## 0.1.0
 
 First public release. Every command is read-only: there are no charger-control or write

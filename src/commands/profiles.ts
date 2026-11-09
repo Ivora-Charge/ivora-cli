@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import { CliError, ExitCode } from '../lib/output.js';
 import { confirmAction } from '../lib/confirm.js';
 import { loadConfig, saveConfig, validateProfileName } from '../lib/profiles.js';
+import { oauthRefs } from '../lib/oauth.js';
 import type { CommandContext } from '../lib/session.js';
 
 export function profilesCommand(ctx: CommandContext): Command {
@@ -16,13 +17,14 @@ export function profilesCommand(ctx: CommandContext): Command {
         name: p.name,
         environment: p.environment,
         current: config.current === p.name ? '*' : '',
+        auth: p.authType === 'oauth' ? 'oauth' : 'api_key',
         tenant_id: p.tenantId ?? '',
         base_url: p.baseUrl ?? '',
       }));
       const out = ctx.out();
       if (out.json) out.result(rows);
       else if (rows.length === 0) out.info('No profiles. Run `ivora login`.');
-      else out.result(rows, ['name', 'environment', 'current', 'tenant_id', 'base_url']);
+      else out.result(rows, ['name', 'environment', 'auth', 'current', 'tenant_id', 'base_url']);
     });
 
   cmd
@@ -59,6 +61,11 @@ export function profilesCommand(ctx: CommandContext): Command {
         yes: ctx.globals().yes,
       });
       if (profile.keyRef) await (await ctx.secrets()).delete(profile.keyRef);
+      if (profile.authType === 'oauth') {
+        const refs = oauthRefs(name);
+        await (await ctx.secrets()).delete(refs.access);
+        await (await ctx.secrets()).delete(refs.refresh);
+      }
       config.profiles = Object.fromEntries(
         Object.entries(config.profiles).filter(([key]) => key !== name),
       );
