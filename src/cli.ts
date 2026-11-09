@@ -6,6 +6,11 @@ import type { CommandContext } from './lib/session.js';
 import { loginCommand } from './commands/login.js';
 import { profilesCommand } from './commands/profiles.js';
 import { whoamiCommand } from './commands/whoami.js';
+import { stationsCommand } from './commands/stations.js';
+import { operationsCommand } from './commands/operations.js';
+import { tariffsCommand } from './commands/tariffs.js';
+import { webhooksCommand } from './commands/webhooks.js';
+import { apiCommand } from './commands/api.js';
 import { validateIdempotencyKey } from './lib/http.js';
 import {
   CLI_VERSION,
@@ -156,7 +161,12 @@ export function buildProgram(
   program
     .addCommand(loginCommand(ctx))
     .addCommand(profilesCommand(ctx))
-    .addCommand(whoamiCommand(ctx));
+    .addCommand(whoamiCommand(ctx))
+    .addCommand(stationsCommand(ctx))
+    .addCommand(operationsCommand(ctx))
+    .addCommand(tariffsCommand(ctx))
+    .addCommand(webhooksCommand(ctx));
+  program.addCommand(apiCommand(ctx));
   inheritSettings(program);
   return program;
 }

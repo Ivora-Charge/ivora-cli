@@ -22,13 +22,21 @@ export class ApiError extends CliError {
   readonly status: number;
   readonly code: string | undefined;
   readonly body: unknown;
+  readonly requestId: string | undefined;
 
-  constructor(status: number, code: string | undefined, message: string, body: unknown) {
+  constructor(
+    status: number,
+    code: string | undefined,
+    message: string,
+    body: unknown,
+    requestId?: string,
+  ) {
     super(message, status === 401 || status === 403 ? ExitCode.Auth : ExitCode.ApiError);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
     this.body = body;
+    this.requestId = requestId;
   }
 }
 
@@ -107,6 +115,8 @@ export interface RequestOptions {
   query?: Record<string, string | number | boolean | undefined>;
   body?: unknown;
   idempotencyKey?: string;
+  /** A POST that only computes (quote, simulate): sends no Idempotency-Key and is not a write. */
+  readOnly?: boolean;
 }
 
 export interface ApiResponse<T> {
@@ -141,7 +151,7 @@ export class ApiClient {
     for (const [k, v] of Object.entries(opts.query ?? {})) {
       if (v !== undefined) url.searchParams.set(k, String(v));
     }
-    const isWrite = WRITE_METHODS.has(method);
+    const isWrite = WRITE_METHODS.has(method) && !opts.readOnly;
     const idempotencyKey = isWrite
       ? validateIdempotencyKey(opts.idempotencyKey ?? randomUUID())
       : undefined;
@@ -200,7 +210,15 @@ export class ApiClient {
         await this.options.sleep(backoffMs(attempt));
         continue;
       }
-      throw new ApiError(res.status, code, errorMessage(res.status, code, data), data);
+      const requestId = errorRequestId(data, res.headers);
+      const message = errorMessage(res.status, code, data);
+      throw new ApiError(
+        res.status,
+        code,
+        requestId ? `${message} (request id: ${requestId})` : message,
+        data,
+        requestId,
+      );
     }
   }
 
@@ -237,6 +255,15 @@ function errorCode(data: unknown): string | undefined {
     if (typeof obj.code === 'string') return obj.code;
   }
   return undefined;
+}
+
+/** The request id from the error body (`request_id`), else the `X-Request-Id` header. */
+function errorRequestId(data: unknown, headers: Headers): string | undefined {
+  if (data && typeof data === 'object') {
+    const id = (data as Record<string, unknown>).request_id;
+    if (typeof id === 'string' && id !== '') return id;
+  }
+  return headers.get('x-request-id') ?? undefined;
 }
 
 function errorMessage(status: number, code: string | undefined, data: unknown): string {
