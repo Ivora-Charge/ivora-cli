@@ -4,22 +4,32 @@
 and operators who manage charging stations, run OCPP diagnostics, test webhooks and migrate
 charger networks from a terminal or a script.
 
-The package will be published on npm as `@ivora/cli`, with the command `ivora`.
+`@ivora/cli` is published on npm, with the command `ivora`. This is v0.1: read-only and pre-alpha,
+so start with a test key (`iv_test_`) before pointing it at a live account.
+
+## Install
+
+```sh
+npm install -g @ivora/cli     # install the `ivora` command
+npx @ivora/cli --help         # or run it once without installing
+ivora --version               # check the installed version
+```
+
+Requires Node.js 22.12 or later. To build from source instead, see
+[Install from source](#install-from-source).
 
 ## Status
 
-**v0.1 (first release, read-only).** This repository holds the build, test and CI setup and the shared
-library stubs (HTTP client, output, profiles, secret redaction, confirmations). Implemented so
-far: `ivora login`, `ivora profiles`, `ivora whoami` and the read-only resource commands below. Nothing has been published to npm. Do not use it against a live
-account.
+**v0.1 (read-only, pre-alpha).** Implemented: `ivora login`, `ivora profiles`, `ivora whoami` and
+the read-only resource commands below (stations, operations, tariffs, webhooks, and `ivora api`
+for GET operations). Behaviour and output may still change between releases.
 
-Planned for the first release (v0.1):
+Not yet available (planned for later releases; the CLI cannot change anything on your account yet):
 
-- `ivora login` with an API key, profiles for the test and live environments, `ivora whoami`
-- station resources: list, show, add, connect, decommission
+- station commands that write: add, connect, decommission
 - remote commands: trigger, reset, unlock, start, stop, with confirmations
 - `ivora logs tail` (OCPP message log) and `ivora listen` (forward webhook events to a local URL)
-- tariff quotes and simulations, webhook endpoints, and `ivora api` for any public `/v1` path
+- write operations through `ivora api`
 
 The CLI only calls the public `/v1` API. It has no staff or admin commands.
 
@@ -34,8 +44,10 @@ ivora profiles list | use <name> | remove <name>
 
 - Keys are never accepted as command-line arguments. `ivora login` reads one from stdin, a
   hidden prompt or `IVORA_API_KEY`, checks it with `GET /v1/access`, and stores it in the OS
-  keychain (macOS Keychain, or `secret-tool` on Linux). If there is no keychain the CLI refuses
-  to save the key rather than writing it to disk; use `IVORA_API_KEY` instead.
+  keychain only: the macOS Keychain, or on Linux the freedesktop Secret Service through
+  `secret-tool` (libsecret). There is no plain-text file fallback. On Windows, or anywhere
+  without a keychain, `ivora login` refuses to save the key; set `IVORA_API_KEY` instead and
+  commands will use it directly.
 - The config file (`~/.config/ivora/config.toml`) holds profile names, environments and key
   references only, never keys.
 - Test keys (`iv_test_`) work with test profiles and live keys (`iv_live_`) with live profiles.
@@ -63,9 +75,21 @@ ivora api locations_read_one_location --path location_id=1
   (`error: ...`), and the exit code tells scripts what happened.
 - Commands use the key's only tenant, or `--tenant <id>` when it reaches several.
 - `ivora api <operationId>` calls only GET operations from the built-in catalog and prints JSON.
-  Anything that writes or controls a charger is refused until after the first publish.
+  Anything that writes or controls a charger is refused in this release.
 - Exit codes: 0 ok, 1 API or network error, 2 usage, 4 timeout, 5 authentication. Errors show the
   API's error code and request id.
+
+## Troubleshooting
+
+**`command not found: ivora` after `npm install -g`.** npm's global bin directory is not on
+your `PATH`. Add it, for example in `~/.zshrc` or `~/.bashrc`:
+
+```sh
+export PATH="$(npm prefix -g)/bin:$PATH"
+```
+
+Then open a new terminal. Alternatively, use a Node.js installed with Homebrew or nvm, which
+puts global commands on your `PATH` already.
 
 ## Install from source
 
