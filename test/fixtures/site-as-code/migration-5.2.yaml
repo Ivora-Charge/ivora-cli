@@ -1,0 +1,26 @@
+# The site-as-code design's migration section (5.2) in a minimal project file.
+version: 1
+project: proj_example
+locations:
+  site-1: { name: Site 1 }
+stations:
+  cp-01: { location: site-1, charger_id: SITE1-CP01 }
+migration:
+  id: mig_example # a Migration Portal migration
+  source: { platform: incumbent-a }
+  proxy_fleet: pilot-pair-1 # the proxy deployment that routes these chargers
+  batches:
+    site-1-wave-1:
+      chargers: [cp-01]
+      target: ivora # ivora | incumbent
+      mode: proxy # portal modes: proxy | direct | await
+      window: { days: [mon, tue, wed, thu], from: '22:00', to: '05:00' }
+      pacing: { max_in_flight: 1, canary: 1, pace_seconds: 60 }
+      preconditions:
+        idle_only: true
+        parity: clean # a clean or overridden parity report not older than parity_max_age_hours
+        terminal_ready: true # payment terminal check passed
+        qr_ready: true # displays and QR routes set
+  rollback_point:
+    batch: site-1-wave-1
+    target: incumbent
