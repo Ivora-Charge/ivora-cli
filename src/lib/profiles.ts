@@ -224,8 +224,11 @@ export function resolveBaseUrl(
     candidate = env.IVORA_API_BASE ?? profile.baseUrl;
   }
   if (candidate === undefined) {
+    // Only a test profile gets here: a live profile always has the production default.
     throw new CliError(
-      `No API base URL for the ${profile.environment} profile "${profile.name}". Set IVORA_API_BASE.`,
+      `No API base URL for the ${profile.environment} profile "${profile.name}": ` +
+        'no test environment is set up. To sign in to production, run `ivora --live login`. ' +
+        'To use a test API, pass `--base-url <url>` to `ivora login` or set IVORA_API_BASE.',
       ExitCode.Usage,
     );
   }

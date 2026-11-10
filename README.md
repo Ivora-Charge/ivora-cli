@@ -16,9 +16,10 @@ ivora --live login            # sign in to production (live is an explicit opt-i
 ivora whoami                  # shows who you are signed in as: auth type and scopes
 ```
 
-A plain `ivora login` uses the test profile. A fresh install has no test API address, so give one
-with `--base-url` (or set `IVORA_API_BASE`), for example
-`ivora login --base-url https://api.example.com`.
+A plain `ivora login` uses the test profile. A fresh install has no test environment set up, so
+without an address it stops with a usage error that says so, points you to `ivora --live login`
+for production, and tells you to pass `--base-url` (or set `IVORA_API_BASE`) to use a test API,
+for example `ivora login --base-url https://api.example.com`.
 
 Browser sign-in appears only where the environment offers it. Otherwise the CLI asks for an API
 key (a hidden prompt, stdin or `IVORA_API_KEY`). See [Authentication](#authentication).
