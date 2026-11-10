@@ -371,6 +371,74 @@ describe('ivora plan', () => {
       assert.ok(unmanaged.includes(u), u);
   });
 
+  // IVP-1141: pins design 1.4 for `ivora apply`. external_reference is an integrator field: it is
+  // compared, but never identifies a live resource. Live location 4, tariff 8 and station 12 are
+  // unkeyed and carry an external_reference (see MIXED).
+  describe('external_reference never matches', () => {
+    const EXT_FILE = `version: 1
+project: proj_42
+locations:
+  ext-loc: { name: Different name, country: USA, external_reference: ext-4 }
+tariffs:
+  ext-tariff: { currency: USD, authorization_minor: 100, external_reference: legacy }
+stations:
+  ext-st:
+    location: ext-loc
+    charger_id: NOT-LOOSE-1
+    external_reference: ext-12
+`;
+    const NAME_FILE = `version: 1
+project: proj_42
+locations:
+  ext-loc: { name: Different name, country: USA }
+stations:
+  ext-st:
+    location: ext-loc
+    charger_id: NOT-LOOSE-1
+    external_reference: ext-12
+`;
+
+    it('plans a location, tariff or station with an equal external_reference as create, live one UNMANAGED', async () => {
+      const r = await plan(EXT_FILE, ['--json']);
+      assert.equal(r.code, ExitCode.Ok, r.err.text);
+      const p = JSON.parse(r.out.text) as PlanJson;
+      for (const [section, key, liveId] of [
+        ['locations', 'ext-loc', 4],
+        ['tariffs', 'ext-tariff', 8],
+        ['stations', 'ext-st', 12],
+      ] as const) {
+        const e = p.entries.find((x) => x.section === section && x.key === key);
+        assert.equal(e?.action, 'create', `${section}.${key} must create`);
+        assert.equal(e?.id, undefined, `${section}.${key} must not carry a live id`);
+        assert.deepEqual(e?.changes, [], `${section}.${key} is not an update`);
+        assert.ok(
+          p.unmanaged.some((u) => u.section === section && u.id === liveId),
+          `${section}:${liveId} listed as unmanaged`,
+        );
+        assert.ok(
+          !p.entries.some((x) => x.section === section && x.id === liveId),
+          `${section}:${liveId} is in no entry (no update, no-op or delete)`,
+        );
+        assert.ok(
+          !p.adopt.some((a) => a.section === section && a.id === liveId),
+          `${section}:${liveId} is not an adopt candidate`,
+        );
+      }
+    });
+
+    it('does not match a station on external_reference when the charger_id differs', async () => {
+      const r = await plan(NAME_FILE, ['--json']);
+      assert.equal(r.code, ExitCode.Ok, r.err.text);
+      const p = JSON.parse(r.out.text) as PlanJson;
+      const e = p.entries.find((x) => x.section === 'stations' && x.key === 'ext-st');
+      assert.equal(e?.action, 'create');
+      assert.equal(e?.id, undefined);
+      assert.ok(p.unmanaged.some((u) => u.section === 'stations' && u.id === 12));
+      assert.equal(p.summary.update, 0);
+      assert.equal(p.summary['no-op'], 0);
+    });
+  });
+
   it('flags a rating change under an open session and a password on a connected station', async () => {
     const r = await plan(FILE, ['--json']);
     const p = JSON.parse(r.out.text) as PlanJson;
