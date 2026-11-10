@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
 
 - `ivora login` signs in through the browser (OAuth authorization code flow with PKCE S256 and a
   127.0.0.1 loopback callback) where the environment advertises it for the CLI (an `ivora_cli`
@@ -8,6 +8,11 @@
   the API-key prompt. `ivora login --with-key` keeps the key path for CI and scripts.
 - OAuth tokens live in the OS keychain only, refresh silently, and `ivora logout` revokes them
   server-side. `ivora whoami` and `ivora profiles list` show the auth type.
+- README (IVP-1034): published on npm; install with `npm install -g @ivora/cli` or `npx @ivora/cli`;
+  Node.js >= 22.12; keys and tokens in the OS keychain only (macOS Keychain, Linux Secret Service via
+  `secret-tool`; `IVORA_API_KEY` elsewhere); Troubleshooting for `command not found: ivora`.
+- Production advertises no OAuth today, so production logins use API keys as before (one-line notice).
+- Still read-only: no write or charger-control commands.
 
 ## 0.1.0
 
