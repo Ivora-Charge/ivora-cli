@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- `ivora validate [-f ivora.yaml]` checks a project file offline (IVP-1125). The JSON Schema is
+  generated from the vendored `/v1` OpenAPI request bodies, and its operationIds are pinned
+  against a snapshot. Secrets are references only, placeholders are errors, and the
+  `roaming_partners` and `apps` sections are skipped because they need a signed-in admin.
+
 ## 0.2.0
 
 - `ivora login` signs in through the browser (OAuth authorization code flow with PKCE S256 and a

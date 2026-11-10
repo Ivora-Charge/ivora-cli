@@ -1,0 +1,30 @@
+# The site-as-code design's migration example (section 5.8), with lab-fk-04 written out as a
+# second station. `ivora validate` must accept it.
+version: 1
+project: proj_test
+locations:
+  lab-site: { name: Lab site, country: USA, time_zone: America/Los_Angeles }
+stations:
+  lab-fk-03:
+    {
+      location: lab-site,
+      charger_id: lab-fk-03,
+      credentials: { secret: 'file:~/secrets/lab-fk-03' },
+    }
+  lab-fk-04:
+    {
+      location: lab-site,
+      charger_id: lab-fk-04,
+      credentials: { secret: 'file:~/secrets/lab-fk-04' },
+    }
+migration:
+  source: { platform: incumbent-a, path: /example/ocpp }
+  proxy_fleet: pilot-pair-1
+  batches:
+    canary:
+      {
+        chargers: [lab-fk-03],
+        target: ivora,
+        mode: proxy,
+        pacing: { max_in_flight: 1, canary: 1, pace_seconds: 60 },
+      }

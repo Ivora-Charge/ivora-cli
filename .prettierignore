@@ -3,3 +3,4 @@ dist/
 .test-build/
 package-lock.json
 LICENSE
+openapi/v1.json

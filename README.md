@@ -110,6 +110,31 @@ ivora api locations_read_one_location --path location_id=1
 - Exit codes: 0 ok, 1 API or network error, 2 usage, 4 timeout, 5 authentication. Errors show the
   API's error code and request id.
 
+## Site file (`ivora.yaml`) validation
+
+```sh
+ivora validate [-f ivora.yaml]   # check a project file offline; nothing is sent or changed
+ivora validate --schema          # print the JSON Schema (for editors)
+```
+
+`ivora.yaml` describes one project: `locations`, `stations` (with `evses` and `connectors`),
+`tariffs` and the project `default_tariff`, `load_groups`, `grid`, `ocpi_publishing`, `webhooks`,
+`displays` and `migration`. Each section is a map keyed by a local key you choose (`site-1`,
+`cp-01`), and sections refer to each other by those keys. The schema is generated from the request
+bodies of the published `/v1` OpenAPI document (vendored in `openapi/`, refreshed with
+`node scripts/sync-openapi.mjs`); load groups, grid limits, migration and station passwords are
+hand-written.
+
+- Secrets are references, never values: `credentials: {secret: env:NAME}` or `{secret: file:path}`.
+  A `file:` secret must be mode 600 and must not be inside a git work tree unless git ignores it.
+  The secret file itself is never read.
+- Placeholders (`TODO`, `<...>`, empty values) are errors. Prices are quoted decimal strings
+  (`price: "0.45"`) and `*_minor` amounts are integers.
+- `roaming_partners` and `apps` need a signed-in admin, so they are skipped and the reason is
+  printed.
+- Exit code 0 means the file is valid and 2 means it is not. Errors go to stderr as
+  `file: path: message`, and `--json` gives a machine-readable result.
+
 ## Troubleshooting
 
 **`command not found: ivora` after `npm install -g`.** npm's global bin directory is not on
