@@ -20,7 +20,7 @@ Requires Node.js 22.12 or later. To build from source instead, see
 
 ## Status
 
-**v0.1 (read-only, pre-alpha).** Implemented: `ivora login`, `ivora profiles`, `ivora whoami` and
+**v0.1 (read-only, pre-alpha).** Implemented: `ivora login` (browser OAuth or API key), `ivora logout`, `ivora profiles`, `ivora whoami` and
 the read-only resource commands below (stations, operations, tariffs, webhooks, and `ivora api`
 for GET operations). Behaviour and output may still change between releases.
 
@@ -36,22 +36,53 @@ The CLI only calls the public `/v1` API. It has no staff or admin commands.
 ## Authentication
 
 ```sh
-printf '%s' "$KEY" | ivora login          # or type it at the hidden prompt
+ivora login                                 # browser sign-in (OAuth) where the environment offers it
+printf '%s' "$KEY" | ivora login --with-key # API key from stdin, a hidden prompt or IVORA_API_KEY
 ivora --live login                          # live is an explicit opt-in
-ivora whoami
+ivora whoami                                # shows the auth type (OAuth or API key) and scopes
+ivora logout                                # revoke the browser sign-in and clear stored credentials
 ivora profiles list | use <name> | remove <name>
 ```
 
-- Keys are never accepted as command-line arguments. `ivora login` reads one from stdin, a
-  hidden prompt or `IVORA_API_KEY`, checks it with `GET /v1/access`, and stores it in the OS
-  keychain only: the macOS Keychain, or on Linux the freedesktop Secret Service through
-  `secret-tool` (libsecret). There is no plain-text file fallback. On Windows, or anywhere
-  without a keychain, `ivora login` refuses to save the key; set `IVORA_API_KEY` instead and
-  commands will use it directly.
-- The config file (`~/.config/ivora/config.toml`) holds profile names, environments and key
-  references only, never keys.
+**Browser sign-in.** `ivora login` reads the environment's OAuth authorization-server metadata
+(`/.well-known/oauth-authorization-server` under the API base). If it advertises the authorization
+code flow with PKCE (S256) and an `ivora_cli` client entry, and its `issuer` is the API base origin,
+the CLI opens your browser, and also prints the URL in case no browser opens. It listens for the
+redirect on `127.0.0.1` only, on a random free port at `/callback`, checks the `state` (and `iss`,
+when the server sends it), and exchanges the code. A callback with a wrong or missing `state`, or a
+wrong `Host`, is answered with an error page and ignored; the CLI keeps waiting for the real one
+(up to 5 minutes). **IPv6 loopback (`[::1]`) is refused:** the browser callback always uses
+`127.0.0.1`. If the metadata is absent, does not offer PKCE S256 or has no `ivora_cli` entry
+(production today), the CLI prints `OAuth not available on this environment; paste an API key` and
+asks for an API key as before. Without an OS keychain, browser sign-in stops before opening the
+browser; if storing the new tokens fails anyway, the CLI revokes them before exiting.
+
+**API keys.** `ivora login --with-key` is the path for CI and scripts. It reads the key from stdin,
+a hidden prompt or `IVORA_API_KEY`, and never contacts the OAuth endpoints. Keys are never accepted
+as command-line arguments.
+
+- Keys and OAuth tokens (access and refresh) are stored in the OS keychain only: the macOS Keychain,
+  or on Linux the freedesktop Secret Service through `secret-tool` (libsecret). There is no
+  plain-text file fallback, and tokens are never written to the config file, put in arguments, logs
+  or error messages. On Windows, or anywhere without a keychain, `ivora login` refuses to save
+  credentials; set `IVORA_API_KEY` instead and commands will use it directly.
+- OAuth access tokens refresh silently before they expire, and once after a `401`. If the refresh
+  fails, the CLI asks you to run `ivora login` again.
+  Refresh tokens rotate, so two `ivora` processes refreshing the same profile at the same moment
+  can trip the server's refresh-token reuse detection, which ends the sign-in and means running
+  `ivora login` again. Avoid running many OAuth-profile commands in parallel right at token expiry;
+  use an API key (`--with-key`) for parallel scripts.
+- `ivora logout` revokes the OAuth tokens on the server and clears the keychain entries. If
+  revocation fails, it says so (exit code 1) and still clears them locally. An API key cannot be
+  revoked from the CLI: logout only removes it from the keychain.
+- OAuth sign-ins are refused (HTTP 403) on imports and migration routes. If a command hits one, the
+  CLI says so; use an API key (`ivora login --with-key`) for those.
+- `ivora whoami` shows `auth` (`oauth` or `api_key`) and the granted `scopes`.
+- The config file (`~/.config/ivora/config.toml`) holds profile names, environments, the auth type,
+  the token expiry time and keychain references only, never keys or tokens.
 - Test keys (`iv_test_`) work with test profiles and live keys (`iv_live_`) with live profiles.
-  A live profile is never the default: pass `--live` (or `--profile <name>`) every time.
+  A live profile is never the default: pass `--live` (or `--profile <name>`) every time. This is the
+  same for browser sign-in and `logout`.
 
 ## Read-only resources
 

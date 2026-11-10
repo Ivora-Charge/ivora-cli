@@ -109,6 +109,13 @@ export interface ClientOptions {
   /** Receives redacted request/response lines for --debug. */
   debug?: (line: string) => void;
   sleep?: (ms: number) => Promise<unknown>;
+  /**
+   * For OAuth sessions: returns a fresh access token. Called once after a 401, and the request
+   * is replayed with the new token. A failure ends the command (the user must log in again).
+   */
+  refreshToken?: () => Promise<string>;
+  /** "oauth" when `apiKey` is an OAuth access token; changes how a 403 is explained. */
+  authType?: 'key' | 'oauth';
 }
 
 export interface RequestOptions {
@@ -127,7 +134,9 @@ export interface ApiResponse<T> {
 }
 
 export class ApiClient {
-  private readonly options: Required<Omit<ClientOptions, 'debug'>> & Pick<ClientOptions, 'debug'>;
+  private readonly options: Required<Omit<ClientOptions, 'debug' | 'refreshToken' | 'authType'>> &
+    Pick<ClientOptions, 'debug' | 'refreshToken' | 'authType'>;
+  private token: string;
 
   constructor(options: ClientOptions) {
     this.options = {
@@ -139,6 +148,7 @@ export class ApiClient {
       // https only (plain http just for loopback): the key is never sent in clear text.
       baseUrl: validateBaseUrl(options.baseUrl),
     };
+    this.token = options.apiKey;
   }
 
   async request<T = unknown>(
@@ -157,7 +167,7 @@ export class ApiClient {
       : undefined;
     const headers: Record<string, string> = {
       Accept: 'application/json',
-      Authorization: `Bearer ${this.options.apiKey}`,
+      Authorization: `Bearer ${this.token}`,
       'Ivora-Version': this.options.apiVersion,
       'User-Agent': `ivora-cli/${CLI_VERSION} node/${process.versions.node}`,
     };
@@ -165,6 +175,7 @@ export class ApiClient {
     const body = opts.body === undefined ? undefined : JSON.stringify(opts.body);
     if (body !== undefined) headers['Content-Type'] = 'application/json';
 
+    let refreshed = false;
     for (let attempt = 0; ; attempt++) {
       const last = attempt >= this.options.maxRetries;
       this.debug(
@@ -202,6 +213,13 @@ export class ApiClient {
         return { status: res.status, headers: res.headers, data: data as T, idempotencyKey };
 
       const code = errorCode(data);
+      if (res.status === 401 && this.options.refreshToken && !refreshed) {
+        refreshed = true;
+        this.token = await this.options.refreshToken();
+        headers.Authorization = `Bearer ${this.token}`;
+        attempt--; // the replay does not use up a retry
+        continue;
+      }
       if (!last && res.status === 429) {
         await this.options.sleep(parseRetryAfter(res.headers.get('retry-after')) * 1000);
         continue;
@@ -211,7 +229,12 @@ export class ApiClient {
         continue;
       }
       const requestId = errorRequestId(data, res.headers);
-      const message = errorMessage(res.status, code, data);
+      let message = errorMessage(res.status, code, data);
+      if (res.status === 403 && this.options.authType === 'oauth' && OAUTH_REFUSED.test(path)) {
+        message +=
+          '. Browser sign-in (OAuth) cannot use imports or migration commands; ' +
+          'use an API key instead: `ivora login --with-key`';
+      }
       throw new ApiError(
         res.status,
         code,
@@ -226,6 +249,9 @@ export class ApiClient {
     this.options.debug?.(line);
   }
 }
+
+/** Routes the server refuses for OAuth tokens. */
+const OAUTH_REFUSED = /^\/v1\/(imports|[^?]*migrat)/i;
 
 function backoffMs(attempt: number): number {
   return Math.min(500 * 2 ** attempt, 8_000);
