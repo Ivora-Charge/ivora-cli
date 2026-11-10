@@ -1,7 +1,8 @@
 /**
  * A small JSON Schema checker for the subset the ivora.yaml schema uses: type, enum, const,
- * required, properties, additionalProperties, items, minItems, minLength, maxLength, pattern,
- * minimum, maximum, anyOf, oneOf. Other keywords are ignored. It exists so `ivora validate`
+ * required, properties, additionalProperties, propertyNames, maxProperties, items, minItems,
+ * maxItems, minLength, maxLength, pattern, minimum, maximum, exclusiveMinimum,
+ * exclusiveMaximum, anyOf, oneOf. Other keywords (description, default, x-ivora-*) are ignored. It exists so `ivora validate`
  * needs no schema-engine dependency and runs offline.
  */
 
@@ -13,13 +14,18 @@ export type JsonSchema = {
   required?: string[];
   properties?: Record<string, JsonSchema>;
   additionalProperties?: boolean | JsonSchema;
+  propertyNames?: JsonSchema;
+  maxProperties?: number;
   items?: JsonSchema;
   minItems?: number;
+  maxItems?: number;
   minLength?: number;
   maxLength?: number;
   pattern?: string;
   minimum?: number;
   maximum?: number;
+  exclusiveMinimum?: number;
+  exclusiveMaximum?: number;
   anyOf?: JsonSchema[];
   oneOf?: JsonSchema[];
   description?: string;
@@ -64,10 +70,12 @@ export function checkSchema(value: unknown, schema: JsonSchema, path = ''): Sche
     if (passing === 0) {
       // Report the closest option (fewest issues) so the message stays actionable.
       const best = results.reduce((a, b) => (b.length < a.length ? b : a), results[0] ?? []);
-      return best.length > 0 ? best : [{ path, message: 'does not match any allowed shape' }];
+      issues.push(
+        ...(best.length > 0 ? best : [{ path, message: 'does not match any allowed shape' }]),
+      );
+      return issues;
     }
     if (schema.oneOf && passing > 1) at('matches more than one allowed shape');
-    return issues;
   }
 
   if (schema.type !== undefined) {
@@ -95,10 +103,16 @@ export function checkSchema(value: unknown, schema: JsonSchema, path = ''): Sche
   if (typeof value === 'number') {
     if (schema.minimum !== undefined && value < schema.minimum) at(`must be >= ${schema.minimum}`);
     if (schema.maximum !== undefined && value > schema.maximum) at(`must be <= ${schema.maximum}`);
+    if (schema.exclusiveMinimum !== undefined && value <= schema.exclusiveMinimum)
+      at(`must be > ${schema.exclusiveMinimum}`);
+    if (schema.exclusiveMaximum !== undefined && value >= schema.exclusiveMaximum)
+      at(`must be < ${schema.exclusiveMaximum}`);
   }
   if (Array.isArray(value)) {
     if (schema.minItems !== undefined && value.length < schema.minItems)
       at(`must have at least ${schema.minItems} item(s)`);
+    if (schema.maxItems !== undefined && value.length > schema.maxItems)
+      at(`must have at most ${schema.maxItems} item(s)`);
     if (schema.items) {
       value.forEach((item, i) => {
         issues.push(...checkSchema(item, schema.items as JsonSchema, child(path, i)));
@@ -110,8 +124,21 @@ export function checkSchema(value: unknown, schema: JsonSchema, path = ''): Sche
     for (const key of schema.required ?? []) {
       if (!(key in obj)) issues.push({ path: child(path, key), message: 'is required' });
     }
+    const entries = Object.entries(obj);
+    if (schema.maxProperties !== undefined && entries.length > schema.maxProperties)
+      at(`must have at most ${schema.maxProperties} entries`);
     const props = schema.properties ?? {};
-    for (const [key, v] of Object.entries(obj)) {
+    for (const [key, v] of entries) {
+      if (schema.propertyNames) {
+        const bad = checkSchema(key, schema.propertyNames, child(path, key));
+        if (bad.length > 0) {
+          issues.push({
+            path: child(path, key),
+            message: `key ${bad[0]?.message ?? 'is not allowed'}`,
+          });
+          continue;
+        }
+      }
       const sub = props[key];
       if (sub) {
         issues.push(...checkSchema(v, sub, child(path, key)));

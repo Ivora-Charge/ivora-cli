@@ -26,16 +26,34 @@ describe('ivora validate', () => {
     const dir = await mkdtemp(join(tmpdir(), 'ivora-validate-'));
     try {
       const good = join(dir, 'ivora.yaml');
-      await writeFile(good, 'version: 1\nstations:\n  - charger_id: A\napps: []\n');
+      await writeFile(
+        good,
+        'version: 1\nproject: p\nlocations:\n  s1: { name: Site 1 }\n' +
+          'stations:\n  cp-01: { location: s1, charger_id: A }\napps: {}\n',
+      );
       const a = io();
       assert.equal(await a.run(['validate', '-f', good]), 0);
-      assert.match(a.err.text, /skipped apps: .*admin/);
+      assert.match(a.err.text, /skipped apps: .*signed-in/);
 
       const bad = join(dir, 'bad.yaml');
-      await writeFile(bad, 'version: 1\nstations:\n  - charger_id: TODO\n');
+      await writeFile(
+        bad,
+        'version: 1\nproject: p\nlocations:\n  s1: { name: Site 1 }\n' +
+          'stations:\n  cp-01: { location: s1, charger_id: TODO }\n',
+      );
       const b = io();
       assert.equal(await b.run(['validate', '-f', bad]), 2);
-      assert.match(b.err.text, /stations\[0\]\.charger_id: is a placeholder/);
+      assert.match(b.err.text, /stations\.cp-01\.charger_id: is a placeholder/);
+
+      const secret = join(dir, 'secret.yaml');
+      await writeFile(
+        secret,
+        'version: 1\nproject: p\nlocations:\n  s1: { name: Site 1 }\n' +
+          'stations:\n  cp-01: { location: s1, charger_id: A, credentials: { secret: "file:./nope" } }\n',
+      );
+      const w = io();
+      assert.equal(await w.run(['validate', '-f', secret]), 0);
+      assert.match(w.err.text, /warning: stations\.cp-01\.credentials\.secret: .*does not exist/);
 
       const j = io();
       assert.equal(await j.run(['--json', 'validate', '-f', bad]), 2);

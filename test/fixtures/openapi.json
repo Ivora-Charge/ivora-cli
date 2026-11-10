@@ -80,17 +80,7 @@
             }
           }
         },
-        "operationId": "stations_register_a_station_and_return_it",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/StationRegistration"
-              }
-            }
-          }
-        }
+        "operationId": "stations_register_a_station_and_return_it"
       }
     },
     "/v1/tenants/{tenant_id}/stations/{station_id}": {
@@ -420,34 +410,6 @@
                 }
               }
             }
-          }
-        }
-      }
-    }
-  },
-  "components": {
-    "schemas": {
-      "StationRegistration": {
-        "type": "object",
-        "required": ["charger_id"],
-        "additionalProperties": false,
-        "properties": {
-          "charger_id": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 48
-          },
-          "name": {
-            "type": "string"
-          },
-          "location_id": {
-            "type": "string"
-          },
-          "vendor": {
-            "type": "string"
-          },
-          "model": {
-            "type": "string"
           }
         }
       }

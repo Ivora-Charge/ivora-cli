@@ -1,0 +1,8 @@
+{
+  "source": "https://api.ivoracharge.co/openapi.json",
+  "fetched": "2026-11-10",
+  "info_version": "2026-10-15",
+  "source_sha256": "061a481142699b76fe146b8099c47ab96c4f46fbc5a0c8be3cd75de581ed293b",
+  "filter": "/v1 paths without /v1/admin; the components they reference",
+  "operations": 340
+}

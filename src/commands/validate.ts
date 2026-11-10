@@ -1,4 +1,6 @@
 import { readFile, stat } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { dirname, resolve } from 'node:path';
 import { Command } from 'commander';
 import { CliError, ExitCode } from '../lib/output.js';
 import type { CommandContext } from '../lib/session.js';
@@ -9,7 +11,9 @@ const MAX_BYTES = 1024 * 1024;
 
 /**
  * `ivora validate [-f ivora.yaml]` checks a site file offline: no network, no credentials, no
- * writes. Sections that need a signed-in admin are skipped with a key and the reason.
+ * writes. Sections that need a signed-in admin are skipped with a key and the reason. `file:`
+ * secret references are checked for mode 600 and the git work-tree rule; secret files are never
+ * read.
  */
 export function validateCommand(ctx: CommandContext): Command {
   return new Command('validate')
@@ -32,14 +36,21 @@ export function validateCommand(ctx: CommandContext): Command {
         if (err instanceof CliError) throw err;
         throw new CliError(`Cannot read ${opts.file}.`, ExitCode.Usage);
       }
-      const result = validateText(text);
+      const result = validateText(text, {
+        baseDir: dirname(resolve(opts.file)),
+        homeDir: ctx.env['HOME'] || homedir(),
+      });
       for (const s of result.skipped) {
         ctx.stderr.write(`skipped ${s.section}: ${s.reason}\n`);
+      }
+      for (const w of result.warnings) {
+        ctx.stderr.write(`${opts.file}: warning: ${w.path || '(root)'}: ${w.message}\n`);
       }
       if (out.json) {
         out.result({
           valid: result.issues.length === 0,
           errors: result.issues,
+          warnings: result.warnings,
           skipped: result.skipped,
         });
       } else {

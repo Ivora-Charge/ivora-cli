@@ -1,0 +1,89 @@
+# The site-as-code design's example file (section 1.1). `ivora validate` must accept it.
+version: 1
+project: proj_example # the tenant the API key belongs to; plan refuses a key for another project
+
+locations:
+  site-1:
+    name: Site 1
+    address: 1 Example Street
+    city: Example City
+    state: CA
+    country: USA # ISO 3166 alpha-3, as the API takes it
+    postal_code: '00000'
+    time_zone: America/Los_Angeles
+    default_tariff: standard # local key of a tariff below
+    tax: # lines, or a preset
+      price_mode: tax_exclusive
+      lines:
+        - { name: State sales tax, type: percent, rate: 7.25 }
+
+stations:
+  cp-01:
+    location: site-1
+    charger_id: SITE1-CP01 # the OCPP identity
+    credentials: { secret: env:IVORA_CP01_PASSWORD } # a reference, never a value
+    evses:
+      1:
+        connectors:
+          # 300 A x 500 V = 150 000 W: a CCS1 DC connector of the 500 V class
+          1:
+            {
+              type: IEC62196T1COMBO,
+              power_type: DC,
+              max_power_w: 150000,
+              max_amperage_a: 300,
+              max_voltage_v: 500,
+              tariff: fast,
+            }
+
+tariffs:
+  standard:
+    currency: USD
+    authorization_minor: 5000 # integer minor units held before charging (USD 50.00)
+    elements:
+      - price_components:
+          - { type: ENERGY, price: '0.45', step_size: 1 } # USD per kWh, step in Wh
+          - { type: PARKING_TIME, price: '6.00', step_size: 60 } # USD per idle hour, step in seconds
+    rules: { idle_grace_minutes: 10 }
+  fast:
+    currency: USD
+    authorization_minor: 5000
+    elements:
+      - price_components:
+          - { type: ENERGY, price: '0.59', step_size: 1 }
+
+load_groups: # stations sit on leaf groups only
+  site-1-main:
+    location: site-1
+    limit: { value: 400, unit: A }
+    supply: { voltage_v: 480, phases: 3 } # file-only, for plan's A-to-W comparison; children inherit it
+    phase_limits: { L1: 400, L2: 400, L3: 400 }
+    fail_safe_limit: { value: 100, unit: A }
+    mode: dynamic
+  site-1-bay-a:
+    parent: site-1-main
+    limit: { value: 200, unit: A } # cp-01 draws about 150 kW / (1.732 x 480 V) = 180 A at full power
+    stations: [cp-01]
+
+grid: # declared here, enforced by the platform
+  site-1:
+    transformer_limit: { value: 500, unit: kVA }
+    signals: [] # future: OpenADR programs
+
+roaming_partners: # signed-in admins only (decision D4)
+  partner-1:
+    profile: default
+    modules: [locations, tariffs, sessions, cdrs]
+    switches: {}
+
+ocpi_publishing: { publish: false }
+
+apps: # signed-in users only
+  app-1: { app_id: app_example, scopes: [stations:read, billing:read] }
+
+webhooks:
+  ops-hook:
+    { url: https://hooks.example.com/ivora, events: [connector.status_changed, site.flipped] }
+
+displays:
+  cp-01: { running_cost: true }
