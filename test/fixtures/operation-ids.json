@@ -1,0 +1,22 @@
+[
+  "access_and_api_keys_discover_current_csms_access",
+  "charging_and_operations_inspect_an_operation_without_redispatching_it",
+  "charging_and_operations_list_the_project_s_operations",
+  "charging_and_operations_read_charging_usage_and_realized_billing",
+  "charging_and_operations_read_one_transaction_in_detail",
+  "getting_started_capabilities",
+  "locations_list_tenant_locations",
+  "locations_read_one_location",
+  "stations_list_tenant_charging_stations",
+  "stations_read_station_and_connector_state",
+  "stations_register_a_station_and_return_it",
+  "tariffs_and_bills_list_the_supported_currencies",
+  "tariffs_and_bills_quote_a_session_s_cost_under_a_stored_tariff",
+  "tariffs_and_bills_read_one_tariff",
+  "tariffs_and_bills_read_tenant_billing_tariffs",
+  "tariffs_and_bills_simulate_a_tariff_draft_against_a_session",
+  "webhooks_and_events_list_webhook_endpoints",
+  "webhooks_and_events_poll_tenant_events_by_cursor",
+  "webhooks_and_events_read_delivery_attempts_for_an_endpoint",
+  "webhooks_and_events_read_one_webhook_endpoint"
+]
