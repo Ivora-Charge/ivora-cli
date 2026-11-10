@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
 
 - `ivora validate [-f ivora.yaml]` checks a project file offline (IVP-1125). The JSON Schema is
   generated from the vendored `/v1` OpenAPI request bodies, and its operationIds are pinned
@@ -20,8 +20,6 @@
   match on `metadata["ivora.key"]` (stations also on `charger_id`); only a keyed resource missing
   from the file is a delete, and a resource without a key is unmanaged. Read-only: it applies
   nothing and never reads a secret.
-
-## 0.2.0
 
 - `ivora login` signs in through the browser (OAuth authorization code flow with PKCE S256 and a
   127.0.0.1 loopback callback) where the environment advertises it for the CLI (an `ivora_cli`
