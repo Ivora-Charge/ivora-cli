@@ -167,6 +167,24 @@ export const COMMANDS: readonly CatalogEntry[] = [
     command: 'export',
     operationId: 'charger_displays_list_a_station_s_charger_displays',
   },
+  {
+    method: 'GET',
+    path: `${T}/locations/{location_id}/tax`,
+    command: 'export',
+    operationId: 'locations_read_a_location_s_tax_lines',
+  },
+  {
+    method: 'GET',
+    path: `${T}/stations/{station_id}/running-cost`,
+    command: 'export',
+    operationId: 'charger_displays_read_a_station_s_running_cost_setting_and_deliveries',
+  },
+  {
+    method: 'GET',
+    path: `${T}/stations/{station_id}/display-pricing`,
+    command: 'export',
+    operationId: 'charger_displays_read_a_charger_s_california_pricing_price_text',
+  },
 ];
 
 /** Looks up a cataloged operation by operationId. */

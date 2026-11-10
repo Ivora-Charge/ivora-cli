@@ -485,6 +485,66 @@
           }
         }
       }
+    },
+    "/v1/tenants/{tenant_id}/locations/{location_id}/tax": {
+      "get": {
+        "operationId": "locations_read_a_location_s_tax_lines",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "location_id": 1,
+                  "configured": false,
+                  "price_mode": "tax_exclusive",
+                  "lines": [],
+                  "preset": null
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tenants/{tenant_id}/stations/{station_id}/running-cost": {
+      "get": {
+        "operationId": "charger_displays_read_a_station_s_running_cost_setting_and_deliveries",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "tenant_id": 42,
+                  "station_id": 1,
+                  "enabled": false,
+                  "interval_seconds": 60,
+                  "source": "default"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tenants/{tenant_id}/stations/{station_id}/display-pricing": {
+      "get": {
+        "operationId": "charger_displays_read_a_charger_s_california_pricing_price_text",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "tenant_id": 42,
+                  "station_id": 1,
+                  "enabled": false,
+                  "source": "default",
+                  "status": "off"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   }
 }
