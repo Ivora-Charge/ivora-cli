@@ -202,6 +202,26 @@ export function selectProfileName(
 }
 
 /**
+ * The error text for a selected profile that does not exist. When it is the default profile and
+ * a live profile does exist, the likely mistake is a missing `--live`, so name the live profile
+ * instead of sending the user back to `ivora login`.
+ */
+export function missingProfileMessage(name: string, config: ProfileConfig, live = false): string {
+  if (name === DEFAULT_PROFILE && !live) {
+    const liveName = Object.values(config.profiles).find((p) => p.environment === 'live')?.name;
+    if (liveName !== undefined) {
+      const flag = liveName === 'live' ? '--live' : `--profile ${liveName}`;
+      return (
+        `No profile "${name}", but the live profile "${liveName}" exists. ` +
+        `Add ${flag} to the command, for example \`ivora ${flag} whoami\`. ` +
+        'Live is an explicit opt-in on every command.'
+      );
+    }
+  }
+  return `No profile "${name}". Run \`ivora login${name === 'live' ? ' --live' : ''}\` first.`;
+}
+
+/**
  * The API base URL for a profile. A test profile uses `IVORA_API_BASE`, then its own URL; without
  * either it is a usage error. A live profile ignores `IVORA_API_BASE`, so a leftover test URL never
  * receives a live key: it uses its own stored URL or the production default, and `note` is told

@@ -2,6 +2,10 @@
 
 ## 0.2.0
 
+- README quick start now uses `ivora --live whoami` and `ivora --live stations list` after
+  `ivora --live login` (IVP-1167). When the `test` profile does not exist but a live one does,
+  the `No profile "test"` error tells you to add `--live` and names the live profile; the exit
+  code is unchanged.
 - `ivora validate [-f ivora.yaml]` checks a project file offline (IVP-1125). The JSON Schema is
   generated from the vendored `/v1` OpenAPI request bodies, and its operationIds are pinned
   against a snapshot. Secrets are references only, placeholders are errors, and the

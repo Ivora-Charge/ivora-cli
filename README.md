@@ -5,7 +5,8 @@ and operators who manage charging stations, run OCPP diagnostics, test webhooks 
 charger networks from a terminal or a script.
 
 `@ivora/cli` is published on npm, with the command `ivora`. This is v0.2: pre-alpha, and it
-never changes anything on your account: every command only reads. Start with a test key
+never changes anything on your account: its commands read from the API (`quote` and `simulate`
+are compute-only POSTs), while `login` and `logout` write only local config and the keychain. Start with a test key
 (`iv_test_`) before pointing it at a live account.
 
 ## Quick start
@@ -13,8 +14,12 @@ never changes anything on your account: every command only reads. Start with a t
 ```sh
 npm install -g @ivora/cli     # install the `ivora` command
 ivora --live login            # sign in to production (live is an explicit opt-in)
-ivora whoami                  # shows who you are signed in as: auth type and scopes
+ivora --live whoami           # shows who you are signed in as: auth type and scopes
+ivora --live stations list    # an example read command against production
 ```
+
+Live is an explicit opt-in on every command: a live profile is never the default, so pass `--live`
+on each command you run against production, not only on `login`.
 
 A plain `ivora login` uses the test profile. A fresh install has no test environment set up, so
 without an address it stops with a usage error that says so, points you to `ivora --live login`
@@ -57,8 +62,10 @@ The CLI only calls the public `/v1` API. It has no staff or admin commands.
 ivora login                                 # browser sign-in (OAuth) where the environment offers it
 printf '%s' "$KEY" | ivora login --with-key # API key from stdin, a hidden prompt or IVORA_API_KEY
 ivora --live login                          # live is an explicit opt-in
-ivora whoami                                # shows the auth type (OAuth or API key) and scopes
-ivora logout                                # revoke the browser sign-in and clear stored credentials
+ivora whoami                                # test profile: shows the auth type (OAuth or API key) and scopes
+ivora --live whoami                         # the same for the live profile
+ivora logout                                # test profile: revoke the browser sign-in and clear stored credentials
+ivora --live logout                         # the same for the live profile
 ivora profiles list | use <name> | remove <name>
 ```
 
@@ -149,8 +156,8 @@ hand-written.
   The secret file itself is never read.
 - Placeholders (`TODO`, `<...>`, empty values) are errors. Prices are quoted decimal strings
   (`price: "0.45"`) and `*_minor` amounts are integers.
-- `roaming_partners` and `apps` need a signed-in admin, so they are skipped and the reason is
-  printed.
+- `roaming_partners` needs a signed-in admin, and `apps` a signed-in user who has seen the consent
+  screen, so both are skipped and the reason is printed.
 - Exit code 0 means the file is valid and 2 means it is not. Errors go to stderr as
   `file: path: message`, and `--json` gives a machine-readable result.
 
@@ -180,7 +187,8 @@ displays. Nothing in your project is changed.
   not overwritten unless you pass `--force`.
 - `--tenant <id>` picks the project when the key reaches several.
 - Station passwords are exported as `{secret: env:NAME}` references, never values.
-- `roaming_partners` and `apps` need a signed-in admin and are not exported. Each skipped section
+- `roaming_partners` (signed-in admin) and `apps` (signed-in user who has seen the consent screen)
+  are not exported. Each skipped section
   is printed on stderr with the reason and noted in the file's header. If the exported file does
   not pass `ivora validate`, a warning says why.
 
