@@ -115,6 +115,7 @@ ivora api locations_read_one_location --path location_id=1
 ```sh
 ivora validate [-f ivora.yaml]   # check a project file offline; nothing is sent or changed
 ivora validate --schema          # print the JSON Schema (for editors)
+ivora plan [-f ivora.yaml]       # diff the file against the live project; read-only, applies nothing
 ```
 
 `ivora.yaml` describes one project: `locations`, `stations` (with `evses` and `connectors`),

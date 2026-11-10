@@ -7,6 +7,11 @@
   against a snapshot. Secrets are references only, placeholders are errors, and the
   `roaming_partners` and `apps` sections are skipped because they need a signed-in admin.
 
+- `ivora plan [-f ivora.yaml] [--json]` (IVP-1127) compares the file with the live project through
+  GET requests only and prints create, update, delete and no-op per location, tariff, station and
+  webhook, with risks, adopt hints (proposals only) and a file-based site power check. Read-only:
+  it applies nothing and never reads a secret.
+
 ## 0.2.0
 
 - `ivora login` signs in through the browser (OAuth authorization code flow with PKCE S256 and a

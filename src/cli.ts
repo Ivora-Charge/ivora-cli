@@ -12,6 +12,7 @@ import { stationsCommand } from './commands/stations.js';
 import { operationsCommand } from './commands/operations.js';
 import { tariffsCommand } from './commands/tariffs.js';
 import { webhooksCommand } from './commands/webhooks.js';
+import { planCommand } from './commands/plan.js';
 import { validateCommand } from './commands/validate.js';
 import { apiCommand } from './commands/api.js';
 import { validateIdempotencyKey } from './lib/http.js';
@@ -178,6 +179,7 @@ export function buildProgram(
     .addCommand(webhooksCommand(ctx));
   program.addCommand(apiCommand(ctx));
   program.addCommand(validateCommand(ctx));
+  program.addCommand(planCommand(ctx));
   inheritSettings(program);
   return program;
 }

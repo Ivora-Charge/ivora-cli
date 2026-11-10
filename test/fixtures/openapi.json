@@ -365,6 +365,24 @@
         }
       }
     },
+    "/v1/tenants/{tenant_id}/locations/{location_id}/tax": {
+      "get": {
+        "operationId": "locations_read_a_location_s_tax_lines",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "location_id": 1,
+                  "configured": false,
+                  "lines": []
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/tenants/{tenant_id}/transactions": {
       "get": {
         "operationId": "charging_and_operations_read_charging_usage_and_realized_billing",

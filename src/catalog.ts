@@ -127,6 +127,12 @@ export const COMMANDS: readonly CatalogEntry[] = [
   },
   {
     method: 'GET',
+    path: `${T}/locations/{location_id}/tax`,
+    command: 'plan',
+    operationId: 'locations_read_a_location_s_tax_lines',
+  },
+  {
+    method: 'GET',
     path: `${T}/transactions`,
     command: 'api',
     operationId: 'charging_and_operations_read_charging_usage_and_realized_billing',
