@@ -1,5 +1,5 @@
 /** Version of this CLI. A test keeps it equal to package.json. */
-export const CLI_VERSION = '0.1.0';
+export const CLI_VERSION = '0.2.0';
 
 /** The dated /v1 API version this release pins, sent as `Ivora-Version`. */
 export const DEFAULT_API_VERSION = '2026-10-15';
