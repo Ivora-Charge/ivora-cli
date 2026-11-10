@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { ExitCode } from '../src/lib/output.js';
 import {
+  missingProfileMessage,
   PRODUCTION_API_BASE,
   assertKeyMatchesProfile,
   configDir,
@@ -41,6 +42,16 @@ describe('profiles', () => {
       'http://127.0.0.1:4010',
     );
     assert.throws(() => resolveBaseUrl(test, {}), { exitCode: ExitCode.Usage });
+  });
+
+  it('tells a user with only a live profile to add --live', () => {
+    const config = { profiles: { live } };
+    const msg = missingProfileMessage('test', config);
+    assert.match(msg, /No profile "test"/);
+    assert.match(msg, /live profile "live" exists/);
+    assert.match(msg, /Add --live to the command/);
+    assert.doesNotMatch(msg, /ivora login/);
+    assert.match(missingProfileMessage('test', { profiles: {} }), /Run `ivora login` first/);
   });
 
   it('explains a test profile without an API base URL', () => {

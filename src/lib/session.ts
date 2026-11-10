@@ -5,6 +5,7 @@ import {
   environmentForKey,
   loadConfig,
   resolveBaseUrl,
+  missingProfileMessage,
   selectProfileName,
   type Profile,
   type ProfileConfig,
@@ -94,10 +95,7 @@ export async function openSession(ctx: CommandContext): Promise<Session> {
     apiKey = envKey;
   } else {
     if (!stored) {
-      throw new CliError(
-        `No profile "${name}". Run \`ivora login${name === 'live' ? ' --live' : ''}\` first.`,
-        ExitCode.Auth,
-      );
+      throw new CliError(missingProfileMessage(name, config, g.live === true), ExitCode.Auth);
     }
     profile = stored;
     if (stored.authType === 'oauth') authType = 'oauth';
