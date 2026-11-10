@@ -365,24 +365,6 @@
         }
       }
     },
-    "/v1/tenants/{tenant_id}/locations/{location_id}/tax": {
-      "get": {
-        "operationId": "locations_read_a_location_s_tax_lines",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "example": {
-                  "location_id": 1,
-                  "configured": false,
-                  "lines": []
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/v1/tenants/{tenant_id}/transactions": {
       "get": {
         "operationId": "charging_and_operations_read_charging_usage_and_realized_billing",
@@ -425,6 +407,138 @@
               "application/json": {
                 "example": {
                   "data": ["EUR", "USD"]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tenants/{tenant_id}/default-tariff": {
+      "get": {
+        "operationId": "tariffs_and_bills_read_the_project_s_default_tariff",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "scope": "project",
+                  "tariff_id": 7
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tenants/{tenant_id}/locations/{location_id}/default-tariff": {
+      "get": {
+        "operationId": "locations_read_a_location_s_default_tariff",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "scope": "location",
+                  "location_id": 1,
+                  "tariff_id": null
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tenants/{tenant_id}/ocpi": {
+      "get": {
+        "operationId": "ocpi_publishing_read_the_tenant_s_ocpi_publishing_settings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "tenant_id": 42,
+                  "publish": true,
+                  "private": false,
+                  "display_name": "Fixture",
+                  "audience": "public",
+                  "excluded_location_ids": []
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tenants/{tenant_id}/stations/{station_id}/displays": {
+      "get": {
+        "operationId": "charger_displays_list_a_station_s_charger_displays",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "data": []
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tenants/{tenant_id}/locations/{location_id}/tax": {
+      "get": {
+        "operationId": "locations_read_a_location_s_tax_lines",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "location_id": 1,
+                  "configured": false,
+                  "price_mode": "tax_exclusive",
+                  "lines": [],
+                  "preset": null
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tenants/{tenant_id}/stations/{station_id}/running-cost": {
+      "get": {
+        "operationId": "charger_displays_read_a_station_s_running_cost_setting_and_deliveries",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "tenant_id": 42,
+                  "station_id": 1,
+                  "enabled": false,
+                  "interval_seconds": 60,
+                  "source": "default"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tenants/{tenant_id}/stations/{station_id}/display-pricing": {
+      "get": {
+        "operationId": "charger_displays_read_a_charger_s_california_pricing_price_text",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "example": {
+                  "tenant_id": 42,
+                  "station_id": 1,
+                  "enabled": false,
+                  "source": "default",
+                  "status": "off"
                 }
               }
             }

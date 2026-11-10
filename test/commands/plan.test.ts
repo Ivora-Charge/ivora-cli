@@ -136,9 +136,8 @@ roaming_partners:
 `;
 
 /**
- * A live site where every resource carries its ivora.key (except one station, matched by
- * charger_id), and the file \`ivora export\` writes for it (design 1.1 shape: keyed maps, local-key
- * references, decimal-string prices, a secret reference, no ivora.key in metadata).
+ * A live site where every resource carries its ivora.key except one station (matched by
+ * charger_id). The round-trip test exports it with the real \`ivora export\` and plans the result.
  */
 const MANAGED: Routes = {
   '/v1/access': { environment: 'test', tenants: [{ id: 42 }] },
@@ -213,6 +212,11 @@ const MANAGED: Routes = {
     next_cursor: null,
   },
   '/v1/tenants/42/transactions': { data: [], next_cursor: null },
+  // Reads only \`ivora export\` makes; plan does not compare these sections yet.
+  '/v1/tenants/42/locations/1/default-tariff': { scope: 'location', tariff_id: 7 },
+  '/v1/tenants/42/default-tariff': { scope: 'project', tariff_id: null },
+  '/v1/tenants/42/stations/11/displays': { data: [] },
+  '/v1/tenants/42/stations/12/displays': { data: [] },
   '/v1/tenants/42/webhooks': {
     data: [
       {
@@ -226,69 +230,6 @@ const MANAGED: Routes = {
     ],
   },
 };
-
-const EXPORTED = `version: 1
-project: "42"
-locations:
-  site-1:
-    name: Site 1
-    address: 1 Example Street
-    city: Example City
-    state: CA
-    country: USA
-    postal_code: "00000"
-    time_zone: America/Los_Angeles
-    external_reference: crm-1
-    metadata:
-      region: west
-    default_tariff: standard
-    tax:
-      price_mode: tax_exclusive
-      lines:
-        - name: State sales tax
-          type: percent
-          rate: "7.25"
-stations:
-  cp-01:
-    charger_id: SITE1-CP01
-    location: site-1
-    credentials:
-      secret: env:IVORA_CP_01_PASSWORD
-    evses:
-      "1":
-        physical_reference: A
-        connectors:
-          "1":
-            type: IEC62196T1COMBO
-            power_type: DC
-            max_power_w: 150000
-            max_amperage_a: 300
-            max_voltage_v: 500
-            tariff: standard
-  site1-cp02:
-    charger_id: SITE1-CP02
-    location: site-1
-    credentials:
-      secret: env:IVORA_SITE1_CP02_PASSWORD
-tariffs:
-  standard:
-    currency: USD
-    authorization_minor: 5000
-    rules:
-      idle_grace_minutes: 10
-    elements:
-      - price_components:
-          - type: ENERGY
-            price: "0.45"
-            step_size: 1
-webhooks:
-  webhook-wh-1:
-    url: https://hooks.example.com/ivora
-    events:
-      - connector.status_changed
-    stations:
-      - cp-01
-`;
 
 let routes: Routes = MIXED;
 /** When set, every list answers a full page with a fresh cursor: a collection that never ends. */
@@ -326,6 +267,19 @@ async function plan(file: string, extra: string[] = []) {
   const dir = await mkdtemp(join(tmpdir(), 'ivora-plan-'));
   const path = join(dir, 'ivora.yaml');
   await writeFile(path, file);
+  return cli(dir, ['plan', '-f', path, ...extra]);
+}
+
+/** Runs \`ivora export -o -\` against the fake API and returns the file it writes. */
+async function exportFile(): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), 'ivora-export-'));
+  const r = await cli(dir, ['export', '-o', '-']);
+  assert.equal(r.code, ExitCode.Ok, r.err.text);
+  assert.doesNotMatch(r.out.text, /LIVE_SECRET_VALUE/);
+  return r.out.text;
+}
+
+async function cli(dir: string, argv: string[]) {
   const sink = () => ({
     text: '',
     write(s: string) {
@@ -335,7 +289,7 @@ async function plan(file: string, extra: string[] = []) {
   const out = sink();
   const err = sink();
   seen.length = 0;
-  const code = await run(['plan', '-f', path, ...extra], {
+  const code = await run(argv, {
     stdout: out,
     stderr: err,
     env: { XDG_CONFIG_HOME: dir, IVORA_API_BASE: base, IVORA_API_KEY: TEST_KEY },
@@ -452,9 +406,15 @@ describe('ivora plan', () => {
     assert.notEqual((await plan(FILE)).code, ExitCode.Ok);
   });
 
-  it('plans a file written by ivora export as no changes', async () => {
+  it('plans a file written by the real ivora export as no changes', async () => {
     routes = MANAGED;
-    const r = await plan(EXPORTED, ['--json']);
+    const exported = await exportFile();
+    // Only GET requests on the way out too.
+    assert.deepEqual(
+      seen.filter((q) => q.method !== 'GET'),
+      [],
+    );
+    const r = await plan(exported, ['--json']);
     assert.equal(r.code, ExitCode.Ok, r.err.text);
     const p = JSON.parse(r.out.text) as PlanJson;
     assert.deepEqual(p.summary, { create: 0, update: 0, delete: 0, 'no-op': 5 });
@@ -463,7 +423,7 @@ describe('ivora plan', () => {
       [],
     );
     assert.deepEqual(p.unmanaged, []);
-    const text = await plan(EXPORTED);
+    const text = await plan(exported);
     assert.match(text.out.text, /0 to create, 0 to update, 0 to delete, 5 unchanged/);
   });
 

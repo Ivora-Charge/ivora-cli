@@ -6,7 +6,14 @@
   generated from the vendored `/v1` OpenAPI request bodies, and its operationIds are pinned
   against a snapshot. Secrets are references only, placeholders are errors, and the
   `roaming_partners` and `apps` sections are skipped because they need a signed-in admin.
-
+- `ivora export [--project | --location <id>] [-o ivora.yaml]` writes the live project as
+  `ivora.yaml` in the schema `ivora validate` checks (IVP-1126), using read-only GET requests of
+  the public /v1 API. It covers locations (with tax lines, opening hours and default tariff),
+  stations with EVSEs and connectors, tariffs and the project default, connector tariffs,
+  ocpi_publishing, webhooks and displays. Resources are keyed by local key
+  (`metadata["ivora.key"]` or a generated one), money is a quoted decimal string, and station
+  passwords are `{ secret: env:NAME }` references, never values. `roaming_partners` and `apps`
+  need a signed-in admin and are not exported; the reason is printed and noted in the header.
 - `ivora plan [-f ivora.yaml] [--json]` (IVP-1127) compares the file with the live project through
   GET requests only and prints create, update, delete and no-op per location, tariff, station and
   webhook, with risks, adopt hints (proposals only) and a file-based site power check. Resources

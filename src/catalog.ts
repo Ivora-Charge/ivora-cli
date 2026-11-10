@@ -127,12 +127,6 @@ export const COMMANDS: readonly CatalogEntry[] = [
   },
   {
     method: 'GET',
-    path: `${T}/locations/{location_id}/tax`,
-    command: 'plan',
-    operationId: 'locations_read_a_location_s_tax_lines',
-  },
-  {
-    method: 'GET',
     path: `${T}/transactions`,
     command: 'api',
     operationId: 'charging_and_operations_read_charging_usage_and_realized_billing',
@@ -148,6 +142,48 @@ export const COMMANDS: readonly CatalogEntry[] = [
     path: '/v1/currencies',
     command: 'api',
     operationId: 'tariffs_and_bills_list_the_supported_currencies',
+  },
+  {
+    method: 'GET',
+    path: `${T}/default-tariff`,
+    command: 'export',
+    operationId: 'tariffs_and_bills_read_the_project_s_default_tariff',
+  },
+  {
+    method: 'GET',
+    path: `${T}/locations/{location_id}/default-tariff`,
+    command: 'export',
+    operationId: 'locations_read_a_location_s_default_tariff',
+  },
+  {
+    method: 'GET',
+    path: `${T}/ocpi`,
+    command: 'export',
+    operationId: 'ocpi_publishing_read_the_tenant_s_ocpi_publishing_settings',
+  },
+  {
+    method: 'GET',
+    path: `${T}/stations/{station_id}/displays`,
+    command: 'export',
+    operationId: 'charger_displays_list_a_station_s_charger_displays',
+  },
+  {
+    method: 'GET',
+    path: `${T}/locations/{location_id}/tax`,
+    command: 'export',
+    operationId: 'locations_read_a_location_s_tax_lines',
+  },
+  {
+    method: 'GET',
+    path: `${T}/stations/{station_id}/running-cost`,
+    command: 'export',
+    operationId: 'charger_displays_read_a_station_s_running_cost_setting_and_deliveries',
+  },
+  {
+    method: 'GET',
+    path: `${T}/stations/{station_id}/display-pricing`,
+    command: 'export',
+    operationId: 'charger_displays_read_a_charger_s_california_pricing_price_text',
   },
 ];
 

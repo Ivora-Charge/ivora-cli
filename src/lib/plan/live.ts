@@ -1,5 +1,4 @@
-import { ApiError } from '../http.js';
-import { CliError, ExitCode } from '../output.js';
+import { listAll as listPages, optional } from '../export/fetch.js';
 import { callOperation, type Query } from '../resource.js';
 import type { Session } from '../session.js';
 import type { Live, Rec } from './types.js';
@@ -17,65 +16,22 @@ export const PLAN_OPERATIONS = {
   transactions: 'charging_and_operations_read_charging_usage_and_realized_billing',
 } as const;
 
-export const PAGE_LIMIT = 100;
-export const MAX_PAGES = 100;
+export { MAX_PAGES, PAGE_LIMIT } from '../export/fetch.js';
 
 const isRec = (v: unknown): v is Rec => v !== null && typeof v === 'object' && !Array.isArray(v);
 
 /**
- * Follows `after` cursors to the end of a collection. A collection longer than MAX_PAGES pages
- * is an error: a truncated read would turn the missing rest into creates and unmanaged entries.
+ * Pages a tenant collection with export's reader: past MAX_PAGES it is an error, never a
+ * truncated read (a truncated read would turn the missing rest into creates and unmanaged entries).
  */
-export async function listAll(
+async function listAll(
   s: Session,
   operationId: string,
   tenant: string,
   query: Query = {},
 ): Promise<Rec[]> {
-  const rows: Rec[] = [];
-  let cursor: string | undefined;
-  for (let page = 0; page < MAX_PAGES; page++) {
-    const res = await callOperation<{ data?: unknown; next_cursor?: unknown }>(
-      s,
-      operationId,
-      { tenant_id: tenant },
-      { query: { ...query, limit: PAGE_LIMIT, after: cursor } },
-    );
-    const body = res.data ?? {};
-    const items = Array.isArray(body.data) ? body.data.filter(isRec) : [];
-    rows.push(...items);
-    const next = body.next_cursor;
-    const nextStr =
-      typeof next === 'number' || (typeof next === 'string' && next !== '')
-        ? String(next)
-        : undefined;
-    // Some collections echo the sent cursor on the last page; an empty or short page ends it.
-    if (
-      nextStr === undefined ||
-      items.length === 0 ||
-      nextStr === cursor ||
-      items.length < PAGE_LIMIT
-    )
-      return rows;
-    cursor = nextStr;
-  }
-  throw new CliError(
-    `${operationId} has more than ${MAX_PAGES * PAGE_LIMIT} entries; ivora plan stops rather ` +
-      'than compare against a partial read.',
-    ExitCode.ApiError,
-  );
-}
-
-/** A read that may be unavailable to this key (403) or not set up (404): returns the reason. */
-async function optional<T>(fn: () => Promise<T>): Promise<{ value: T } | { skip: string }> {
-  try {
-    return { value: await fn() };
-  } catch (err) {
-    if (err instanceof ApiError && (err.status === 403 || err.status === 404)) {
-      return { skip: `the API answered ${err.status}${err.code ? ` (${err.code})` : ''}` };
-    }
-    throw err;
-  }
+  const rows = await listPages(s, operationId, { tenant_id: tenant }, query);
+  return rows.filter(isRec);
 }
 
 /**

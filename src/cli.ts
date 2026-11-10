@@ -12,6 +12,7 @@ import { stationsCommand } from './commands/stations.js';
 import { operationsCommand } from './commands/operations.js';
 import { tariffsCommand } from './commands/tariffs.js';
 import { webhooksCommand } from './commands/webhooks.js';
+import { exportCommand } from './commands/export.js';
 import { planCommand } from './commands/plan.js';
 import { validateCommand } from './commands/validate.js';
 import { apiCommand } from './commands/api.js';
@@ -176,7 +177,8 @@ export function buildProgram(
     .addCommand(stationsCommand(ctx))
     .addCommand(operationsCommand(ctx))
     .addCommand(tariffsCommand(ctx))
-    .addCommand(webhooksCommand(ctx));
+    .addCommand(webhooksCommand(ctx))
+    .addCommand(exportCommand(ctx));
   program.addCommand(apiCommand(ctx));
   program.addCommand(validateCommand(ctx));
   program.addCommand(planCommand(ctx));
