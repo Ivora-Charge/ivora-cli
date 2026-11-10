@@ -16,7 +16,12 @@ import {
   oauthRefs,
   startLoopbackListener,
 } from '../src/lib/oauth.js';
-import { KeychainSecretStore, MemorySecretStore, type Exec } from '../src/lib/secrets.js';
+import {
+  KeychainSecretStore,
+  MemorySecretStore,
+  UnavailableSecretStore,
+  type Exec,
+} from '../src/lib/secrets.js';
 
 // Fake values only. The server below is a local stand-in; no real API is contacted.
 const KEY = 'iv_test_fakekey1234567890';
@@ -30,6 +35,8 @@ interface Seen {
 
 interface AsOptions {
   metadata?: Record<string, unknown> | null;
+  /** Merged into the default metadata document. */
+  patch?: Record<string, unknown>;
   revokeStatus?: number;
 }
 
@@ -55,6 +62,7 @@ async function startAs(options: AsOptions = {}) {
             redirect_uri_template: 'http://127.0.0.1:{port}/callback',
           },
           resource: `${base}/v1`,
+          ...options.patch,
         }
       : options.metadata;
   const server: Server = createServer((req, res) => {
@@ -140,26 +148,30 @@ function capture() {
   };
 }
 
-/** Plays the browser: fetches the redirect URI with a code and the given state. */
-function browser(mutate?: (state: string) => string) {
+interface BrowserOptions {
+  /** One callback per entry, in order; each maps the real state to the one sent. */
+  states?: ((state: string) => string)[];
+  /** Sent as the RFC 9207 `iss` parameter. */
+  iss?: string;
+}
+
+/** Plays the browser: fetches the redirect URI with a code and the given state(s). */
+function browser(options: BrowserOptions = {}) {
   const opened: string[] = [];
+  const statuses: number[] = [];
   const openUrl = async (url: string): Promise<void> => {
     opened.push(url);
     const u = new URL(url);
-    const redirect = new URL(u.searchParams.get('redirect_uri') ?? '');
-    redirect.searchParams.set('code', 'fake-auth-code');
     const state = u.searchParams.get('state') ?? '';
-    redirect.searchParams.set('state', mutate ? mutate(state) : state);
-    await new Promise<void>((resolve) => {
-      httpRequest(redirect, (res) => {
-        res.resume();
-        res.on('end', resolve);
-      })
-        .on('error', () => resolve())
-        .end();
-    });
+    for (const mutate of options.states ?? [(x: string) => x]) {
+      const redirect = new URL(u.searchParams.get('redirect_uri') ?? '');
+      redirect.searchParams.set('code', 'fake-auth-code');
+      redirect.searchParams.set('state', mutate(state));
+      if (options.iss !== undefined) redirect.searchParams.set('iss', options.iss);
+      statuses.push(await get(redirect.href).catch(() => 0));
+    }
   };
-  return { opened, openUrl };
+  return { opened, statuses, openUrl };
 }
 
 let dirs: string[] = [];
@@ -209,44 +221,101 @@ describe('PKCE', () => {
   });
 });
 
-describe('loopback listener', () => {
+// Short timeouts everywhere: a broken check must fail the test, not hang CI.
+const QUICK = { timeout: 10_000 };
+
+describe('loopback listener', QUICK, () => {
   it('binds 127.0.0.1 only, on a random port', async () => {
-    const l = await startLoopbackListener('s');
+    const l = await startLoopbackListener('s', { timeoutMs: 2000 });
     try {
+      assert.equal(l.address, '127.0.0.1'); // not 0.0.0.0 or ::, which would reach the LAN
       assert.equal(l.redirectUri, `http://127.0.0.1:${l.port}/callback`);
-      // Look at the bound address through a probe: IPv4 loopback answers, IPv6 is refused.
-      const v4 = await probe('127.0.0.1', l.port);
-      assert.equal(v4, true);
-      const v6 = await probe('::1', l.port);
-      assert.equal(v6, false);
+      assert.equal(await probe('127.0.0.1', l.port), true);
+      assert.equal(await probe('::1', l.port), false);
     } finally {
       await l.close();
     }
   });
 
-  it('refuses a callback with the wrong state and does not return the code', async () => {
-    const l = await startLoopbackListener('right-state');
-    const waiting = l.waitForCode();
-    const expectation = assert.rejects(waiting, { exitCode: ExitCode.Auth });
-    const status = await get(`${l.redirectUri}?code=abc&state=wrong-state`);
-    assert.equal(status, 400);
-    await expectation;
-    await l.close();
+  it('refuses a wrong state, keeps waiting, and times out without a code', async () => {
+    const l = await startLoopbackListener('right-state', { timeoutMs: 300 });
+    try {
+      const waiting = l.waitForCode();
+      assert.equal(await get(`${l.redirectUri}?code=abc&state=wrong-state`), 400);
+      await assert.rejects(waiting, (err: { exitCode: number; message: string }) => {
+        assert.equal(err.exitCode, ExitCode.Timeout);
+        assert.match(err.message, /1 callback\(s\) with a wrong or missing state were refused/);
+        assert.doesNotMatch(err.message, /abc/);
+        return true;
+      });
+    } finally {
+      await l.close();
+    }
   });
 
-  it('accepts the right state and only the /callback path', async () => {
-    const l = await startLoopbackListener('right-state');
-    const waiting = l.waitForCode();
-    assert.equal(await get(`http://127.0.0.1:${l.port}/other?code=x&state=right-state`), 404);
-    assert.equal(await get(`${l.redirectUri}?code=abc&state=right-state`), 200);
-    assert.equal(await waiting, 'abc');
-    await l.close();
+  it('refuses a missing state', async () => {
+    const l = await startLoopbackListener('right-state', { timeoutMs: 300 });
+    try {
+      const waiting = l.waitForCode();
+      assert.equal(await get(`${l.redirectUri}?code=abc`), 400);
+      await assert.rejects(waiting, { exitCode: ExitCode.Timeout });
+    } finally {
+      await l.close();
+    }
+  });
+
+  it('refuses a bad Host header', async () => {
+    const l = await startLoopbackListener('right-state', { timeoutMs: 300 });
+    try {
+      const waiting = l.waitForCode();
+      const path = '/callback?code=abc&state=right-state';
+      assert.equal(await get(`http://127.0.0.1:${l.port}${path}`, 'localhost'), 400);
+      assert.equal(await get(`http://127.0.0.1:${l.port}${path}`, 'evil.example'), 400);
+      await assert.rejects(waiting, { exitCode: ExitCode.Timeout });
+    } finally {
+      await l.close();
+    }
+  });
+
+  it('ignores bad callbacks and still accepts the good one that follows', async () => {
+    const l = await startLoopbackListener('right-state', { timeoutMs: 2000 });
+    try {
+      const waiting = l.waitForCode();
+      assert.equal(await get(`http://127.0.0.1:${l.port}/other?code=x&state=right-state`), 404);
+      assert.equal(await get(`${l.redirectUri}?code=bad&state=wrong`), 400);
+      assert.equal(await get(`${l.redirectUri}?code=bad`), 400);
+      assert.equal(await get(`${l.redirectUri}?code=abc&state=right-state`), 200);
+      assert.equal(await waiting, 'abc');
+    } finally {
+      await l.close();
+    }
+  });
+
+  it('checks iss when the server sends it', async () => {
+    const l = await startLoopbackListener('st', { timeoutMs: 2000, issuer: 'https://as.example' });
+    try {
+      const waiting = l.waitForCode();
+      const expectation = assert.rejects(waiting, { exitCode: ExitCode.Auth });
+      assert.equal(await get(`${l.redirectUri}?code=abc&state=st&iss=https://other.example`), 400);
+      await expectation;
+    } finally {
+      await l.close();
+    }
+    const ok = await startLoopbackListener('st', { timeoutMs: 2000, issuer: 'https://as.example' });
+    try {
+      const waiting = ok.waitForCode();
+      const iss = encodeURIComponent('https://as.example');
+      assert.equal(await get(`${ok.redirectUri}?code=abc&state=st&iss=${iss}`), 200);
+      assert.equal(await waiting, 'abc');
+    } finally {
+      await ok.close();
+    }
   });
 });
 
-function get(url: string): Promise<number> {
+function get(url: string, host?: string): Promise<number> {
   return new Promise((resolve, reject) => {
-    httpRequest(url, (res) => {
+    httpRequest(url, { timeout: 2000, ...(host ? { headers: { host } } : {}) }, (res) => {
       res.resume();
       res.on('end', () => resolve(res.statusCode ?? 0));
     })
@@ -270,30 +339,108 @@ function probe(host: string, port: number): Promise<boolean> {
   });
 }
 
-describe('authorization-server metadata', () => {
+/** A complete metadata document for a server at `base`, with `patch` applied. */
+function doc(base: string, patch: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    issuer: base,
+    authorization_endpoint: `${base}/oauth/authorize`,
+    token_endpoint: `${base}/oauth/token`,
+    code_challenge_methods_supported: ['S256'],
+    ivora_cli: { client_id: 'ivora-cli', token_endpoint_auth_method: 'none' },
+    ...patch,
+  };
+}
+
+/** Serves one metadata document and returns what fetchOAuthMetadata makes of it. */
+async function metaFor(build: (base: string) => Record<string, unknown> | null) {
+  const server = createServer((_req, res) => {
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const m = build(base);
+    res.writeHead(m ? 200 : 404, { 'content-type': 'application/json' });
+    res.end(JSON.stringify(m ?? {}));
+  });
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  try {
+    return await fetchOAuthMetadata(base);
+  } finally {
+    await new Promise<void>((r) => server.close(() => r()));
+  }
+}
+
+describe('authorization-server metadata', QUICK, () => {
   it('reads the metadata the CLI needs', async () => {
     as = await startAs();
     const meta = await fetchOAuthMetadata(as.url);
     assert.equal(meta?.clientId, 'ivora-cli');
     assert.equal(meta?.tokenEndpoint, `${as.url}/oauth/token`);
+    assert.equal(meta?.issuer, as.url);
   });
 
-  it('is undefined without S256, without the document, or with a client secret method', async () => {
-    as = await startAs({ metadata: null });
-    assert.equal(await fetchOAuthMetadata(as.url), undefined);
-    await as.close();
-    as = await startAs({
-      metadata: {
-        authorization_endpoint: 'http://127.0.0.1/a',
-        token_endpoint: 'http://127.0.0.1/t',
-        code_challenge_methods_supported: ['plain'],
-      },
-    });
-    assert.equal(await fetchOAuthMetadata(as.url), undefined);
+  it('is undefined without the document, without S256, or with a client secret method', async () => {
+    assert.equal(await metaFor(() => null), undefined);
+    assert.equal(
+      await metaFor((b) => doc(b, { code_challenge_methods_supported: ['plain'] })),
+      undefined,
+    );
+    assert.equal(
+      await metaFor((b) =>
+        doc(b, {
+          ivora_cli: { client_id: 'ivora-cli', token_endpoint_auth_method: 'client_secret_basic' },
+        }),
+      ),
+      undefined,
+    );
+  });
+
+  it('requires the ivora_cli block, with a client id and (if given) S256', async () => {
+    assert.notEqual(await metaFor((b) => doc(b)), undefined);
+    assert.equal(await metaFor((b) => doc(b, { ivora_cli: undefined })), undefined);
+    assert.equal(
+      await metaFor((b) => doc(b, { ivora_cli: { token_endpoint_auth_method: 'none' } })),
+      undefined,
+    );
+    assert.equal(
+      await metaFor((b) =>
+        doc(b, { ivora_cli: { client_id: 'ivora-cli', code_challenge_method: 'plain' } }),
+      ),
+      undefined,
+    );
+  });
+
+  it('requires the issuer to be the API base origin', async () => {
+    assert.equal(await metaFor((b) => doc(b, { issuer: undefined })), undefined);
+    assert.equal(await metaFor((b) => doc(b, { issuer: 'https://elsewhere.example' })), undefined);
+  });
+
+  it('prefers ivora_cli.resource over a top-level resource, and notes iss support', async () => {
+    const meta = await metaFor((b) =>
+      doc(b, {
+        resource: 'https://top.example/v1',
+        authorization_response_iss_parameter_supported: true,
+        ivora_cli: { client_id: 'ivora-cli', resource: 'https://cli.example/v1' },
+      }),
+    );
+    assert.equal(meta?.resource, 'https://cli.example/v1');
+    assert.equal(meta?.requireIss, true);
+  });
+
+  it('with an unsafe loopback template, treats OAuth as unavailable', async () => {
+    assert.equal(
+      await metaFor((b) =>
+        doc(b, {
+          ivora_cli: {
+            client_id: 'ivora-cli',
+            redirect_uri_template: 'http://[::1]:{port}/callback',
+          },
+        }),
+      ),
+      undefined,
+    );
   });
 });
 
-describe('ivora login (browser)', () => {
+describe('ivora login (browser)', QUICK, () => {
   it('runs the PKCE flow, stores tokens in the keychain only, and whoami shows OAuth', async () => {
     as = await startAs();
     const b = browser();
@@ -337,15 +484,73 @@ describe('ivora login (browser)', () => {
 
   it('refuses a state mismatch and saves nothing', async () => {
     as = await startAs();
-    const b = browser((state) => `${state}x`);
-    const s = await sandbox(as, { openUrl: b.openUrl });
-    assert.equal(await s.go(['login']), ExitCode.Auth);
-    assert.match(s.stderr.text, /state did not match/);
+    const b = browser({ states: [(state) => `${state}x`] });
+    const s = await sandbox(as, { openUrl: b.openUrl, loginTimeoutMs: 300 });
+    assert.equal(await s.go(['login']), ExitCode.Timeout);
+    assert.deepEqual(b.statuses, [400]);
+    assert.match(s.stderr.text, /wrong or missing state were refused/);
     assert.equal(
       as.seen.some((r) => r.path === '/oauth/token'),
       false,
     );
     assert.equal(await s.secrets.get(oauthRefs('test').access), undefined);
+  });
+
+  it('a bad callback does not end the sign-in; the real one still completes it', async () => {
+    as = await startAs();
+    const b = browser({ states: [() => 'forged', () => '', (state) => state] });
+    const s = await sandbox(as, { openUrl: b.openUrl, loginTimeoutMs: 2000 });
+    assert.equal(await s.go(['login']), ExitCode.Ok);
+    assert.deepEqual(b.statuses, [400, 400, 200]);
+    assert.equal(as.seen.filter((r) => r.path === '/oauth/token').length, 1);
+  });
+
+  it('checks iss on the callback when the server advertises it', async () => {
+    as = await startAs({ patch: { authorization_response_iss_parameter_supported: true } });
+    const bad = browser({ iss: 'https://elsewhere.example' });
+    const s = await sandbox(as, { openUrl: bad.openUrl, loginTimeoutMs: 2000 });
+    assert.equal(await s.go(['login']), ExitCode.Auth);
+    assert.match(s.stderr.text, /did not come from this environment/);
+    assert.equal(
+      as.seen.some((r) => r.path === '/oauth/token'),
+      false,
+    );
+    const good = browser({ iss: as.url });
+    assert.equal(await s.go(['login'], '', { openUrl: good.openUrl }), ExitCode.Ok);
+  });
+
+  it('without a keychain, refuses before opening the browser', async () => {
+    as = await startAs();
+    const s = await sandbox(as, {
+      secrets: new UnavailableSecretStore(),
+      openUrl: async () => assert.fail('the browser must not open'),
+    });
+    assert.equal(await s.go(['login']), ExitCode.Usage);
+    assert.match(s.stderr.text, /No OS keychain is available/);
+    assert.equal(
+      as.seen.some((r) => r.path === '/oauth/token'),
+      false,
+    );
+  });
+
+  it('revokes the new tokens when the keychain cannot store them', async () => {
+    as = await startAs();
+    const secrets = new MemorySecretStore();
+    const realSet = secrets.set.bind(secrets);
+    secrets.set = async (ref, secret) => {
+      if (ref.endsWith(':refresh')) throw new Error('keychain write failed');
+      return realSet(ref, secret);
+    };
+    const b = browser();
+    const s = await sandbox(as, { openUrl: b.openUrl, secrets });
+    assert.notEqual(await s.go(['login']), ExitCode.Ok);
+    const revokes = as.seen.filter((r) => r.path === '/oauth/revoke');
+    assert.deepEqual(revokes.map((r) => r.form?.get('token_type_hint')).sort(), [
+      'access_token',
+      'refresh_token',
+    ]);
+    assert.equal(await secrets.get(oauthRefs('test').access), undefined);
+    assert.doesNotMatch(s.stdout.text + s.stderr.text, /fake-(access|refresh)-token/);
   });
 
   it('keeps tokens out of argv, stdout, stderr and --debug logs', async () => {
@@ -381,18 +586,6 @@ describe('ivora login (browser)', () => {
     }
   });
 
-  it('with an unsafe loopback template, treats OAuth as unavailable', async () => {
-    as = await startAs({
-      metadata: {
-        authorization_endpoint: 'http://127.0.0.1/a',
-        token_endpoint: 'http://127.0.0.1/t',
-        code_challenge_methods_supported: ['S256'],
-        ivora_cli: { redirect_uri_template: 'http://[::1]:{port}/callback' },
-      },
-    });
-    assert.equal(await fetchOAuthMetadata(as.url), undefined);
-  });
-
   it('keeps the live-profile rule: --live is explicit and must match the profile', async () => {
     as = await startAs();
     const b = browser();
@@ -406,7 +599,7 @@ describe('ivora login (browser)', () => {
   });
 });
 
-describe('fallback and --with-key', () => {
+describe('fallback and --with-key', QUICK, () => {
   it('falls back to the key prompt with one notice when OAuth is not advertised', async () => {
     as = await startAs({ metadata: null });
     const s = await sandbox(as, { openUrl: async () => assert.fail('no browser') });
@@ -414,6 +607,18 @@ describe('fallback and --with-key', () => {
     await s.go(['login'], `${KEY}\n`);
     assert.match(s.stderr.text, /OAuth not available on this environment; paste an API key/);
     assert.equal(s.stderr.text.match(/OAuth not available/g)?.length, 1);
+  });
+
+  it('falls back to the key prompt when S256 is advertised but ivora_cli is not', async () => {
+    as = await startAs({ patch: { ivora_cli: undefined } });
+    const s = await sandbox(as, { openUrl: async () => assert.fail('no browser') });
+    await s.go(['login'], `${KEY}\n`);
+    assert.match(s.stderr.text, /OAuth not available on this environment; paste an API key/);
+    assert.equal(as.seen.find((r) => r.path === '/v1/access')?.auth, `Bearer ${KEY}`);
+    assert.equal(
+      as.seen.some((r) => r.path.startsWith('/oauth/')),
+      false,
+    );
   });
 
   it('--with-key keeps the key path and never reads the metadata', async () => {
@@ -429,7 +634,7 @@ describe('fallback and --with-key', () => {
   });
 });
 
-describe('refresh, logout and 403 handling', () => {
+describe('refresh, logout and 403 handling', QUICK, () => {
   async function loggedIn() {
     as = await startAs();
     const b = browser();

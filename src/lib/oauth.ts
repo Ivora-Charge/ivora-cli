@@ -13,7 +13,6 @@ import type { AddressInfo } from 'node:net';
 import { CliError, ExitCode } from './output.js';
 
 export const METADATA_PATH = '/.well-known/oauth-authorization-server';
-export const DEFAULT_CLIENT_ID = 'ivora-cli';
 export const CALLBACK_PATH = '/callback';
 const LOOPBACK_HOST = '127.0.0.1';
 /** Refresh this long before the access token expires. */
@@ -22,7 +21,9 @@ const LOGIN_TIMEOUT_MS = 5 * 60_000;
 const REQUEST_TIMEOUT_MS = 30_000;
 
 export interface OAuthMetadata {
-  issuer?: string;
+  issuer: string;
+  /** The server sends `iss` on the callback (RFC 9207); the CLI then checks it. */
+  requireIss?: boolean;
   authorizationEndpoint: string;
   tokenEndpoint: string;
   revocationEndpoint?: string;
@@ -57,7 +58,8 @@ function secureUrl(value: string | undefined): string | undefined {
 /**
  * Reads the environment's authorization-server metadata. Returns undefined, never throws,
  * when OAuth is not available: no document, an unreadable one, or one that does not
- * advertise the authorization code flow with PKCE S256 for the CLI.
+ * advertise the authorization code flow with PKCE S256 and an `ivora_cli` client block whose
+ * issuer is the API base origin.
  */
 export async function fetchOAuthMetadata(
   baseUrl: string,
@@ -91,29 +93,56 @@ export async function fetchOAuthMetadata(
   ) {
     return undefined;
   }
-  const cli =
-    d.ivora_cli && typeof d.ivora_cli === 'object' ? (d.ivora_cli as Record<string, unknown>) : {};
-  if (d.ivora_cli !== undefined && cli.token_endpoint_auth_method !== undefined) {
-    // The CLI is a public client: refuse a server that wants a client secret.
-    if (cli.token_endpoint_auth_method !== 'none') return undefined;
+  // The CLI's own client registration must be advertised; a server that only speaks
+  // generic OAuth (no `ivora_cli` block) is not one the CLI signs in to.
+  if (!d.ivora_cli || typeof d.ivora_cli !== 'object' || Array.isArray(d.ivora_cli)) {
+    return undefined;
+  }
+  const cli = d.ivora_cli as Record<string, unknown>;
+  const clientId = str(cli.client_id);
+  if (!clientId) return undefined;
+  // The CLI is a public client: refuse a server that wants a client secret.
+  if (cli.token_endpoint_auth_method !== undefined && cli.token_endpoint_auth_method !== 'none') {
+    return undefined;
+  }
+  if (cli.code_challenge_method !== undefined && cli.code_challenge_method !== 'S256') {
+    return undefined;
+  }
+  if (
+    cli.code_challenge_methods_supported !== undefined &&
+    !strList(cli.code_challenge_methods_supported).includes('S256')
+  ) {
+    return undefined;
   }
   const template = str(cli.redirect_uri_template);
   if (template !== undefined && template !== `http://${LOOPBACK_HOST}:{port}${CALLBACK_PATH}`) {
     return undefined;
   }
+  // The issuer must be the environment the metadata was read from (RFC 8414 section 3.3).
+  const issuer = str(d.issuer);
+  if (!issuer || !sameOrigin(issuer, baseUrl)) return undefined;
   const authorizationEndpoint = secureUrl(str(d.authorization_endpoint));
   const tokenEndpoint = secureUrl(str(d.token_endpoint));
   if (!authorizationEndpoint || !tokenEndpoint) return undefined;
   const revocationEndpoint = secureUrl(str(d.revocation_endpoint));
-  const resource = str(d.resource) ?? str(cli.resource);
+  const resource = str(cli.resource) ?? str(d.resource);
   return {
-    ...(str(d.issuer) ? { issuer: str(d.issuer) as string } : {}),
+    issuer,
+    ...(d.authorization_response_iss_parameter_supported === true ? { requireIss: true } : {}),
     authorizationEndpoint,
     tokenEndpoint,
     ...(revocationEndpoint ? { revocationEndpoint } : {}),
-    clientId: str(cli.client_id) ?? DEFAULT_CLIENT_ID,
+    clientId,
     ...(resource ? { resource } : {}),
   };
+}
+
+function sameOrigin(a: string, b: string): boolean {
+  try {
+    return new URL(a).origin === new URL(b).origin;
+  } catch {
+    return false;
+  }
 }
 
 export interface Pkce {
@@ -155,6 +184,8 @@ export function buildAuthorizeUrl(meta: OAuthMetadata, p: AuthorizeParams): stri
 
 export interface LoopbackListener {
   port: number;
+  /** The address the listener is bound to (always 127.0.0.1). */
+  address: string;
   redirectUri: string;
   /** Resolves with the authorization code once a callback with the right state arrives. */
   waitForCode(): Promise<string>;
@@ -164,20 +195,31 @@ export interface LoopbackListener {
 const PAGE = (title: string, text: string): string =>
   `<!doctype html><meta charset="utf-8"><title>${title}</title><body style="font-family:sans-serif"><h1>${title}</h1><p>${text}</p></body>`;
 
+export interface ListenerOptions {
+  /** How long `waitForCode` waits for a good callback. */
+  timeoutMs?: number;
+  /** When set, the callback must carry `iss` equal to this (RFC 9207, mix-up defence). */
+  issuer?: string;
+}
+
 /**
  * Listens on 127.0.0.1 only (never IPv6 or another interface), on a random free port, for
- * `GET /callback`. A callback whose `state` differs is refused and does not end the wait.
+ * `GET /callback`. A request with the wrong Host, or a callback whose `state` is missing or
+ * differs, gets a 400 and is otherwise ignored: the wait goes on until a good callback or the
+ * timeout, so another local process cannot cancel the sign-in by sending a bad one.
  */
 export async function startLoopbackListener(
   expectedState: string,
-  timeoutMs: number = LOGIN_TIMEOUT_MS,
+  options: ListenerOptions = {},
 ): Promise<LoopbackListener> {
+  const timeoutMs = options.timeoutMs ?? LOGIN_TIMEOUT_MS;
   let settle: { resolve(code: string): void; reject(err: Error): void } | undefined;
   const result = new Promise<string>((resolve, reject) => {
     settle = { resolve, reject };
   });
   // Avoid an unhandled rejection if the caller closes before waiting.
   result.catch(() => undefined);
+  let refused = 0;
 
   const server: Server = createServer((req, res) => {
     const url = new URL(req.url ?? '/', `http://${LOOPBACK_HOST}`);
@@ -189,21 +231,24 @@ export async function startLoopbackListener(
       });
       res.end(PAGE(title, text));
     };
-    const hostOk = /^127\.0\.0\.1(:\d+)?$/.test(req.headers.host ?? '');
-    if (req.method !== 'GET' || url.pathname !== CALLBACK_PATH || !hostOk) {
+    if (req.method !== 'GET' || url.pathname !== CALLBACK_PATH) {
       send(404, 'Not found', 'Nothing here.');
       return;
     }
+    const hostOk = /^127\.0\.0\.1(:\d+)?$/.test(req.headers.host ?? '');
     const state = url.searchParams.get('state');
-    if (state === null || state !== expectedState) {
-      send(
-        400,
-        'Sign-in refused',
-        'The state did not match. Return to the terminal and try again.',
-      );
+    if (!hostOk || state === null || state !== expectedState) {
+      refused += 1;
+      send(400, 'Sign-in refused', 'This callback was not for this sign-in. It was ignored.');
+      return;
+    }
+    // From here on the state matched, so the callback belongs to this sign-in: any problem
+    // ends it.
+    if (options.issuer !== undefined && url.searchParams.get('iss') !== options.issuer) {
+      send(400, 'Sign-in refused', 'The callback came from an unexpected server.');
       settle?.reject(
         new CliError(
-          'Sign-in refused: the callback state did not match. Run `ivora login` again.',
+          "Sign-in refused: the callback did not come from this environment's server. Run `ivora login` again.",
           ExitCode.Auth,
         ),
       );
@@ -232,16 +277,22 @@ export async function startLoopbackListener(
     server.once('error', reject);
     server.listen(0, LOOPBACK_HOST, resolve);
   });
-  const port = (server.address() as AddressInfo).port;
+  const { port, address } = server.address() as AddressInfo;
   let timer: NodeJS.Timeout | undefined;
   return {
     port,
+    address,
     redirectUri: `http://${LOOPBACK_HOST}:${port}${CALLBACK_PATH}`,
     waitForCode: () => {
       timer = setTimeout(
         () =>
           settle?.reject(
-            new CliError('Timed out waiting for the browser sign-in.', ExitCode.Timeout),
+            new CliError(
+              refused > 0
+                ? `Timed out waiting for the browser sign-in (${refused} callback(s) with a wrong or missing state were refused).`
+                : 'Timed out waiting for the browser sign-in.',
+              ExitCode.Timeout,
+            ),
           ),
         timeoutMs,
       );

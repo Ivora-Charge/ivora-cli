@@ -13,7 +13,7 @@ import {
   type Profile,
 } from '../lib/profiles.js';
 import { accessEnvironment, defaultTenant, type Access } from '../lib/access.js';
-import { displayPrefix } from '../lib/secrets.js';
+import { UnavailableSecretStore, displayPrefix } from '../lib/secrets.js';
 import { saveTokens, type CommandContext } from '../lib/session.js';
 import {
   buildAuthorizeUrl,
@@ -62,9 +62,15 @@ async function browserLogin(
   profile: Profile,
 ): Promise<void> {
   const out = ctx.out();
+  const store = await ctx.secrets();
+  // Find out before the browser opens: tokens are never kept anywhere but the keychain.
+  if (store instanceof UnavailableSecretStore) await store.set();
   const pkce = createPkce();
   const state = randomState();
-  const listener = await startLoopbackListener(state);
+  const listener = await startLoopbackListener(state, {
+    ...(ctx.loginTimeoutMs !== undefined ? { timeoutMs: ctx.loginTimeoutMs } : {}),
+    ...(meta.requireIss ? { issuer: meta.issuer } : {}),
+  });
   let tokens;
   try {
     const url = buildAuthorizeUrl(meta, {
@@ -115,7 +121,16 @@ async function browserLogin(
   const tenantId = defaultTenant(access, (text) => out.info(`note: ${text}`));
   if (tenantId) profile.tenantId = tenantId;
   else delete profile.tenantId;
-  await saveTokens(ctx, profile, tokens);
+  try {
+    await saveTokens(ctx, profile, tokens);
+  } catch (err) {
+    // Tokens that cannot be stored are given back, so none stay valid with nowhere to live.
+    const refs = oauthRefs(profile.name);
+    await store.delete(refs.access).catch(() => false);
+    await store.delete(refs.refresh).catch(() => false);
+    await discard();
+    throw err;
+  }
 }
 
 export function loginCommand(ctx: CommandContext): Command {

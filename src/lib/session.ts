@@ -36,6 +36,8 @@ export interface CommandContext {
   fetch?: typeof fetch;
   /** Opens the browser for `ivora login` (tests replace it). */
   openUrl: OpenUrl;
+  /** How long `ivora login` waits for the browser callback (tests shorten it). */
+  loginTimeoutMs?: number;
   globals(): GlobalOptions;
   out(): Output;
 }

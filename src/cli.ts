@@ -43,6 +43,8 @@ export interface RunIo {
   fetch?: typeof fetch;
   /** Replaces opening the browser (tests). */
   openUrl?: OpenUrl;
+  /** Shortens the wait for the browser callback (tests). */
+  loginTimeoutMs?: number;
 }
 
 /** Reads a line from the terminal without echoing it. */
@@ -154,6 +156,7 @@ export function buildProgram(
     secrets: async () => (store ??= await openSecretStore()),
     ...(io.fetch ? { fetch: io.fetch } : {}),
     openUrl: io.openUrl ?? openInBrowser,
+    ...(io.loginTimeoutMs !== undefined ? { loginTimeoutMs: io.loginTimeoutMs } : {}),
     globals: () => program.opts<GlobalOptions>(),
     out: () =>
       new Output({
