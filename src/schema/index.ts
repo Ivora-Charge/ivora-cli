@@ -175,7 +175,7 @@ export function buildSchema(input: RequestBodySchemas = REQUEST_BODIES): JsonSch
       evses: numberedMap('^[1-9][0-9]?$', evse, 'EVSEs keyed by their number (1 to 99).'),
     },
     required: ['location'],
-    extra: { anyOf: [{ required: ['charger_id'] }, { required: ['name'] }] },
+    extra: { oneOf: [{ required: ['charger_id'] }, { required: ['name'] }] },
   });
 
   const tariff = body(S.tariffs.bodies.tariff);
