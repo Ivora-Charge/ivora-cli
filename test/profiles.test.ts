@@ -43,6 +43,21 @@ describe('profiles', () => {
     assert.throws(() => resolveBaseUrl(test, {}), { exitCode: ExitCode.Usage });
   });
 
+  it('explains a test profile without an API base URL', () => {
+    assert.throws(
+      () => resolveBaseUrl(test, {}),
+      (err: Error & { exitCode?: number }) => {
+        assert.equal(err.exitCode, ExitCode.Usage);
+        assert.match(err.message, /No API base URL for the test profile "test"/);
+        assert.match(err.message, /no test environment is set up/);
+        assert.match(err.message, /`ivora --live login`/);
+        assert.match(err.message, /--base-url/);
+        assert.match(err.message, /IVORA_API_BASE/);
+        return true;
+      },
+    );
+  });
+
   it('ignores IVORA_API_BASE for live profiles, with one note', () => {
     const notes: string[] = [];
     const env = { IVORA_API_BASE: 'http://127.0.0.1:4010' };

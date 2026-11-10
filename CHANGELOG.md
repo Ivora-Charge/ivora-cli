@@ -30,6 +30,9 @@
 - README (IVP-1034): published on npm; install with `npm install -g @ivora/cli` or `npx @ivora/cli`;
   Node.js >= 22.12; keys and tokens in the OS keychain only (macOS Keychain, Linux Secret Service via
   `secret-tool`; `IVORA_API_KEY` elsewhere); Troubleshooting for `command not found: ivora`.
+- A test profile with no API base URL now explains that no test environment is set up, that
+  production sign-in is `ivora --live login`, and that `--base-url` or `IVORA_API_BASE` still
+  work (IVP-1163). Message text only: same default profile and exit code.
 - Production advertises no OAuth today, so production logins use API keys as before (one-line notice).
 - Still read-only: no write or charger-control commands.
 

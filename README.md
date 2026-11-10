@@ -4,8 +4,25 @@
 and operators who manage charging stations, run OCPP diagnostics, test webhooks and migrate
 charger networks from a terminal or a script.
 
-`@ivora/cli` is published on npm, with the command `ivora`. This is v0.1: read-only and pre-alpha,
-so start with a test key (`iv_test_`) before pointing it at a live account.
+`@ivora/cli` is published on npm, with the command `ivora`. This is v0.2: pre-alpha, and it
+never changes anything on your account: every command only reads. Start with a test key
+(`iv_test_`) before pointing it at a live account.
+
+## Quick start
+
+```sh
+npm install -g @ivora/cli     # install the `ivora` command
+ivora --live login            # sign in to production (live is an explicit opt-in)
+ivora whoami                  # shows who you are signed in as: auth type and scopes
+```
+
+A plain `ivora login` uses the test profile. A fresh install has no test environment set up, so
+without an address it stops with a usage error that says so, points you to `ivora --live login`
+for production, and tells you to pass `--base-url` (or set `IVORA_API_BASE`) to use a test API,
+for example `ivora login --base-url https://api.example.com`.
+
+Browser sign-in appears only where the environment offers it. Otherwise the CLI asks for an API
+key (a hidden prompt, stdin or `IVORA_API_KEY`). See [Authentication](#authentication).
 
 ## Install
 
@@ -20,11 +37,12 @@ Requires Node.js 22.12 or later. To build from source instead, see
 
 ## Status
 
-**v0.1 (read-only, pre-alpha).** Implemented: `ivora login` (browser OAuth or API key), `ivora logout`, `ivora profiles`, `ivora whoami` and
+**v0.2 (pre-alpha).** Implemented: `ivora login` (browser OAuth or API key), `ivora logout`, `ivora profiles`, `ivora whoami`,
 the read-only resource commands below (stations, operations, tariffs, webhooks, and `ivora api`
-for GET operations). Behaviour and output may still change between releases.
+for GET operations), and the site-file commands `ivora validate`, `ivora export` and `ivora plan`.
+No command writes to your account; `ivora export` only writes a local file. Behaviour and output may still change between releases.
 
-Not yet available (planned for later releases; the CLI cannot change anything on your account yet):
+Not yet available (planned for later releases; the CLI cannot change anything on your account):
 
 - station commands that write: add, connect, decommission
 - remote commands: trigger, reset, unlock, start, stop, with confirmations
@@ -110,7 +128,7 @@ ivora api locations_read_one_location --path location_id=1
 - Exit codes: 0 ok, 1 API or network error, 2 usage, 4 timeout, 5 authentication. Errors show the
   API's error code and request id.
 
-## Site file (`ivora.yaml`) validation
+## Site file (`ivora.yaml`): validate, export and plan
 
 ```sh
 ivora validate [-f ivora.yaml]   # check a project file offline; nothing is sent or changed
@@ -143,6 +161,29 @@ A resource without one is listed as unmanaged and never deleted; `external_refer
 either. Adopt hints propose writing `ivora.key` on an existing resource and are never applied. The
 `project` must be the project id (`42` or `proj_42`), and a key for another project is refused.
 
+### `ivora export`
+
+```sh
+ivora export                          # write the whole project to ./ivora.yaml
+ivora export --location 12 -o site.yaml
+ivora export -o - > ivora.yaml        # print to stdout instead of a file
+```
+
+`ivora export` reads the live project through GET requests only and writes it as an `ivora.yaml`
+that `ivora validate` accepts. It covers locations (tax, opening hours, default tariff), stations
+with EVSEs and connectors, tariffs and the project default tariff, ocpi_publishing, webhooks and
+displays. Nothing in your project is changed.
+
+- `--project` exports the whole project (the default); `--location <id>` exports one location with
+  its stations, tariffs and displays. The two cannot be combined.
+- `-o, --output <file>` sets the file (default `ivora.yaml`, `-` for stdout). An existing file is
+  not overwritten unless you pass `--force`.
+- `--tenant <id>` picks the project when the key reaches several.
+- Station passwords are exported as `{secret: env:NAME}` references, never values.
+- `roaming_partners` and `apps` need a signed-in admin and are not exported. Each skipped section
+  is printed on stderr with the reason and noted in the file's header. If the exported file does
+  not pass `ivora validate`, a warning says why.
+
 ## Troubleshooting
 
 **`command not found: ivora` after `npm install -g`.** npm's global bin directory is not on
@@ -171,8 +212,8 @@ npm link
 ivora --version
 ```
 
-The default API endpoint is `https://api.ivoracharge.com`. Set `IVORA_API_BASE` (or
-`ivora login --base-url`) to point a test profile at another environment. Live profiles ignore
+The live API endpoint is `https://api.ivoracharge.com`. A test profile has no default address:
+set `IVORA_API_BASE` (or use `ivora login --base-url`) to point it at a test environment. Live profiles ignore
 `IVORA_API_BASE`, so a leftover test URL never receives a live key; a live profile uses the URL
 stored with `ivora --live login --base-url` or the default.
 
