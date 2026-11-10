@@ -184,6 +184,50 @@ describe('validateText', () => {
     assert.ok(!JSON.stringify(r2).includes('s3cret'), 'values are not echoed');
   });
 
+  it('requires exactly one of charger_id or name on a station', () => {
+    const both = DESIGN.replace(
+      '    charger_id: SITE1-CP01',
+      '    charger_id: SITE1-CP01\n    name: CP 01',
+    );
+    const bothIssues = validateText(both).issues.filter((i) => i.path === 'stations.cp-01');
+    assert.equal(bothIssues.length, 1);
+    assert.match(bothIssues[0]?.message ?? '', /exactly one of charger_id or name \(not both\)/);
+    const neither = DESIGN.replace(/^ {4}charger_id:.*\n/m, '');
+    const nIssues = validateText(neither).issues.filter((i) => i.path === 'stations.cp-01');
+    assert.equal(nIssues.length, 1);
+    assert.match(nIssues[0]?.message ?? '', /exactly one of charger_id or name \(neither is set\)/);
+  });
+
+  it('catches inline secrets in open maps, which the schema does not', () => {
+    const open = (extra: string): string => DESIGN + extra;
+    const leaks: [string, string, string][] = [
+      [
+        'metadata api_key',
+        'x:\n  metadata:\n    api_key: sk_live_abc123def456\n',
+        'x.metadata.api_key',
+      ],
+      [
+        'metadata password',
+        'x:\n  metadata:\n    password: hunter2hunter2\n',
+        'x.metadata.password',
+      ],
+      [
+        'nested webhook map',
+        'x:\n  hooks:\n    wh:\n      headers:\n        signing_secret: whsec_abc123\n',
+        'x.hooks.wh.headers.signing_secret',
+      ],
+      ['array element map', 'x:\n  list:\n    - auth_token: tok_abc123\n', 'x.list[0].auth_token'],
+    ];
+    for (const [label, yaml, path] of leaks) {
+      const r = validateText(open(yaml));
+      const hit = r.issues.find((i) => i.path === path && /references only/.test(i.message));
+      assert.ok(hit, label);
+      assert.ok(!JSON.stringify(r).match(/sk_live|hunter2|whsec_|tok_abc/), `${label}: not echoed`);
+    }
+    const ok = validateText(open('x:\n  metadata:\n    api_key: env:IVORA_KEY\n'));
+    assert.ok(!ok.issues.some((i) => i.path === 'x.metadata.api_key'), 'references are fine');
+  });
+
   it('accepts env: and file: references only', () => {
     const ok = DESIGN.replace('env:IVORA_CP01_PASSWORD', '"file:./secrets/cp-01"');
     assert.deepEqual(validateText(ok).issues, []);

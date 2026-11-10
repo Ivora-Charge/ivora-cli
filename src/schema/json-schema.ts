@@ -67,6 +67,18 @@ export function checkSchema(value: unknown, schema: JsonSchema, path = ''): Sche
     const options = schema.anyOf ?? schema.oneOf ?? [];
     const results = options.map((s) => checkSchema(value, s, path));
     const passing = results.filter((r) => r.length === 0).length;
+    // oneOf over bare `required` options reads as "exactly one of these fields".
+    const fields = options.map((o) => (o.required?.length === 1 ? o.required[0] : undefined));
+    const exactlyOne =
+      schema.oneOf !== undefined && fields.every((f) => f !== undefined)
+        ? fields.map((f) => String(f)).join(' or ')
+        : undefined;
+    if (exactlyOne !== undefined && passing !== 1) {
+      at(
+        `must set exactly one of ${exactlyOne}${passing === 0 ? ' (neither is set)' : ' (not both)'}`,
+      );
+      return issues;
+    }
     if (passing === 0) {
       // Report the closest option (fewest issues) so the message stays actionable.
       const best = results.reduce((a, b) => (b.length < a.length ? b : a), results[0] ?? []);
