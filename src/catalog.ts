@@ -143,6 +143,30 @@ export const COMMANDS: readonly CatalogEntry[] = [
     command: 'api',
     operationId: 'tariffs_and_bills_list_the_supported_currencies',
   },
+  {
+    method: 'GET',
+    path: `${T}/default-tariff`,
+    command: 'export',
+    operationId: 'tariffs_and_bills_read_the_project_s_default_tariff',
+  },
+  {
+    method: 'GET',
+    path: `${T}/locations/{location_id}/default-tariff`,
+    command: 'export',
+    operationId: 'locations_read_a_location_s_default_tariff',
+  },
+  {
+    method: 'GET',
+    path: `${T}/ocpi`,
+    command: 'export',
+    operationId: 'ocpi_publishing_read_the_tenant_s_ocpi_publishing_settings',
+  },
+  {
+    method: 'GET',
+    path: `${T}/stations/{station_id}/displays`,
+    command: 'export',
+    operationId: 'charger_displays_list_a_station_s_charger_displays',
+  },
 ];
 
 /** Looks up a cataloged operation by operationId. */

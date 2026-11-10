@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- `ivora export [--project | --location <id>] [-o ivora.yaml]` writes the live project as `ivora.yaml`
+  (locations, stations, EVSEs, connectors, tariffs and defaults, ocpi_publishing, webhooks, displays)
+  using read-only GET requests of the public /v1 API. Secrets are `secret_ref` placeholders, never
+  values. `roaming_partners` and `apps` need a signed-in admin and are written as `skipped`.
+
 ## 0.2.0
 
 - `ivora login` signs in through the browser (OAuth authorization code flow with PKCE S256 and a
