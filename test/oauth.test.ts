@@ -153,6 +153,8 @@ interface BrowserOptions {
   states?: ((state: string) => string)[];
   /** Sent as the RFC 9207 `iss` parameter. */
   iss?: string;
+  /** The code for each callback, by index; defaults to 'fake-auth-code'. */
+  codes?: string[];
 }
 
 /** Plays the browser: fetches the redirect URI with a code and the given state(s). */
@@ -163,9 +165,9 @@ function browser(options: BrowserOptions = {}) {
     opened.push(url);
     const u = new URL(url);
     const state = u.searchParams.get('state') ?? '';
-    for (const mutate of options.states ?? [(x: string) => x]) {
+    for (const [i, mutate] of (options.states ?? [(x: string) => x]).entries()) {
       const redirect = new URL(u.searchParams.get('redirect_uri') ?? '');
-      redirect.searchParams.set('code', 'fake-auth-code');
+      redirect.searchParams.set('code', options.codes?.[i] ?? 'fake-auth-code');
       redirect.searchParams.set('state', mutate(state));
       if (options.iss !== undefined) redirect.searchParams.set('iss', options.iss);
       statuses.push(await get(redirect.href).catch(() => 0));
@@ -286,6 +288,20 @@ describe('loopback listener', QUICK, () => {
       assert.equal(await get(`${l.redirectUri}?code=bad`), 400);
       assert.equal(await get(`${l.redirectUri}?code=abc&state=right-state`), 200);
       assert.equal(await waiting, 'abc');
+    } finally {
+      await l.close();
+    }
+  });
+
+  it('keeps the first good code; a second good callback cannot replace it', async () => {
+    const l = await startLoopbackListener('right-state', { timeoutMs: 2000 });
+    try {
+      const waiting = l.waitForCode();
+      assert.equal(await get(`${l.redirectUri}?code=first&state=right-state`), 200);
+      await get(`${l.redirectUri}?code=second&state=right-state`).catch(() => 0);
+      // Let any deferred settle run before checking which code won.
+      await new Promise((r) => setTimeout(r, 100));
+      assert.equal(await waiting, 'first');
     } finally {
       await l.close();
     }
@@ -503,6 +519,19 @@ describe('ivora login (browser)', QUICK, () => {
     assert.equal(await s.go(['login']), ExitCode.Ok);
     assert.deepEqual(b.statuses, [400, 400, 200]);
     assert.equal(as.seen.filter((r) => r.path === '/oauth/token').length, 1);
+  });
+
+  it('exchanges only the first good code, once, when a second good callback follows', async () => {
+    as = await startAs();
+    const same = (state: string): string => state;
+    const b = browser({ states: [same, same], codes: ['first', 'second'] });
+    const s = await sandbox(as, { openUrl: b.openUrl, loginTimeoutMs: 2000 });
+    assert.equal(await s.go(['login']), ExitCode.Ok);
+    assert.equal(b.statuses[0], 200);
+    const exchanges = as.seen.filter((r) => r.path === '/oauth/token');
+    assert.equal(exchanges.length, 1);
+    assert.equal(exchanges[0]?.form?.get('grant_type'), 'authorization_code');
+    assert.equal(exchanges[0]?.form?.get('code'), 'first');
   });
 
   it('checks iss on the callback when the server advertises it', async () => {
