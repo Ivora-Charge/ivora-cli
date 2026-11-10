@@ -3,21 +3,41 @@ import type { PowerGroup, PowerImpact } from './types.js';
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => v !== null && typeof v === 'object' && !Array.isArray(v);
 
-interface Supply {
+export interface Supply {
   voltage_v: number;
   phases: number;
 }
 
+/**
+ * The A-to-W factor for a supply. `voltage_v` is the line-to-line voltage (the design's example
+ * is 480 V, 3 phases), and the limit is the current per line:
+ * - 1 phase: P = V x I;
+ * - 2 phases (split-phase, or two lines of a three-phase supply): the load sits across the two
+ *   lines, so P = V(L-L) x I, factor 1 (not 2: that would double-count the same current);
+ * - 3 phases: P = sqrt(3) x V(L-L) x I.
+ */
+export function phaseFactor(phases: number): number {
+  return phases === 3 ? Math.sqrt(3) : 1;
+}
+
 /** Watts for a limit of `unit`, or undefined when an A limit has no supply to convert with. */
-function toWatts(limit: unknown, supply: Supply | undefined): number | undefined {
+export function toWatts(limit: unknown, supply: Supply | undefined): number | undefined {
   if (!isObj(limit) || typeof limit['value'] !== 'number') return undefined;
   if (limit['unit'] === 'W') return limit['value'];
   if (limit['unit'] === 'A' && supply) {
-    const f = supply.phases === 1 ? 1 : supply.phases === 2 ? 2 : Math.sqrt(3);
-    return Math.round(limit['value'] * supply.voltage_v * f);
+    return Math.round(limit['value'] * supply.voltage_v * phaseFactor(supply.phases));
   }
   return undefined;
 }
+
+/** Design 2.1 checks plan does not run yet; printed so their absence is never silent. */
+export const POWER_NOT_CHECKED = [
+  'connector rating consistency (max_power_w against max_amperage_a x max_voltage_v)',
+  'parent/child sums (children against their parent group limit)',
+  'fail-safe limits (fail_safe_limit against the stations it would hold)',
+  'transformer capacity (grid.transformer_limit)',
+  'NEC 625.42 (continuous-load sizing of the branch circuit)',
+] as const;
 
 /**
  * Site power impact (design 2.1), from the file only: load groups are not readable on /v1, so
@@ -33,6 +53,7 @@ export function powerImpact(doc: Obj): PowerImpact {
       available: false,
       note: 'no load_groups in the file; nothing to compare.',
       groups: [],
+      not_checked: [...POWER_NOT_CHECKED],
     };
   }
   const supplyOf = (key: string, seen = new Set<string>()): Supply | undefined => {
@@ -96,5 +117,6 @@ export function powerImpact(doc: Obj): PowerImpact {
       'computed from the file only (ratings and limits as declared); no live load-group data is ' +
       'readable on /v1.',
     groups: out,
+    not_checked: [...POWER_NOT_CHECKED],
   };
 }

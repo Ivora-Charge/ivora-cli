@@ -42,6 +42,8 @@ export interface PowerImpact {
   /** Why not available, or what the numbers are based on. */
   note: string;
   groups: PowerGroup[];
+  /** Design 2.1 checks plan does not run yet. */
+  not_checked: string[];
 }
 
 export interface Plan {
@@ -49,7 +51,7 @@ export interface Plan {
   tenant: string;
   entries: PlanEntry[];
   adopt: AdoptHint[];
-  /** Live resources with no counterpart in the file and no marker: left alone. */
+  /** Live resources without an ivora.key and not matched by the file: reported, never deleted. */
   unmanaged: { section: PlanEntry['section']; id: string | number; identity: string }[];
   skipped: { section: string; reason: string }[];
   /** Things plan could not compare, or assumes. */
@@ -64,8 +66,12 @@ export interface Live {
   tariffs: Rec[];
   stations: Rec[];
   webhooks: Rec[];
-  /** Tax per live location id; undefined when the read failed or is unconfigured. */
-  tax: Map<number, Rec | undefined>;
+  /** Tax per live location id (as a string); undefined when not configured. */
+  tax: Map<string, Rec | undefined>;
+  /** Location id -> why its tax could not be read (403 or 404). */
+  taxSkipped: Map<string, string>;
+  /** Stations with a session in progress, when the key can read transactions. */
+  openSessions: { known: true; stations: Set<string> } | { known: false; reason: string };
 }
 
 export type Rec = Record<string, unknown>;

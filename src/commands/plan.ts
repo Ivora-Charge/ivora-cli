@@ -14,6 +14,11 @@ import { validateText } from '../schema/document.js';
 
 const MAX_BYTES = 1024 * 1024;
 
+/** The tenant id a `project` value names: `42`, `proj_42`, `p42` or `tenant_42`. */
+export function projectTenantId(project: string): string | undefined {
+  return /^(?:proj_|p|tenant_)?(\d+)$/.exec(project)?.[1];
+}
+
 /**
  * `ivora plan [-f ivora.yaml]` compares the file with the live project and prints what would be
  * created, updated or deleted. Phase 1 is read-only: it sends GET requests only, never applies
@@ -53,11 +58,21 @@ export function planCommand(ctx: CommandContext): Command {
       const admin = new Set(checked.skipped.map((s) => s.section));
       const body = Object.fromEntries(Object.entries(doc).filter(([k]) => !admin.has(k)));
 
+      // The project must name a tenant id, so a key for another project is refused before
+      // anything is read.
+      const project = String(doc['project'] ?? '');
+      const wanted = projectTenantId(project);
+      if (wanted === undefined) {
+        throw new CliError(
+          `${opts.file}: project "${project}" is not a project id (a number, or proj_<n>); ` +
+            'plan cannot check it against the key. Nothing was read.',
+          ExitCode.Usage,
+        );
+      }
+
       const s = await openSession(ctx);
       const tenant = await resolveTenant(ctx, s, opts.tenant);
-      const project = String(doc['project'] ?? '');
-      const wanted = /^(?:proj_|p|tenant_)?(\d+)$/.exec(project)?.[1];
-      if (wanted !== undefined && wanted !== tenant) {
+      if (wanted !== tenant) {
         throw new CliError(
           `${opts.file} is for project ${project}, but this key reaches project ${tenant}. Nothing was read.`,
           ExitCode.Usage,
@@ -68,11 +83,6 @@ export function planCommand(ctx: CommandContext): Command {
       const plan = diffSite(body, live, opts.file, tenant);
       plan.skipped = checked.skipped;
       plan.power = powerImpact(body);
-      if (wanted === undefined) {
-        plan.notes.push(
-          `project "${project}" is not a numeric id, so it was not checked against the key`,
-        );
-      }
       for (const w of checked.warnings) plan.notes.push(`${w.path || '(root)'}: ${w.message}`);
 
       const out = ctx.out();

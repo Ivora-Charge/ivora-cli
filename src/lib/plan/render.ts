@@ -45,6 +45,10 @@ export function renderPlan(plan: Plan, environment: string): string {
       );
     }
   }
+  if (plan.power.not_checked.length > 0) {
+    out.push('  not checked yet (design 2.1):');
+    for (const c of plan.power.not_checked) out.push(`    ${c}`);
+  }
   if (plan.adopt.length > 0) {
     out.push('');
     out.push('Adopt hints (proposals only; plan changes nothing):');
@@ -52,7 +56,7 @@ export function renderPlan(plan: Plan, environment: string): string {
   }
   if (plan.unmanaged.length > 0) {
     out.push('');
-    out.push('Live resources not in the file and not linked to a key (left alone):');
+    out.push('Unmanaged live resources (no ivora.key; reported, never deleted):');
     for (const u of plan.unmanaged) out.push(`  ${u.section} ${String(u.id)}: ${u.identity}`);
   }
   if (plan.notes.length > 0) {
