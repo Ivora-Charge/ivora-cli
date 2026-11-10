@@ -33,7 +33,7 @@ interface Page {
 
 /**
  * Follows `after` cursors to the end of a collection. A collection longer than MAX_PAGES pages
- * is an error: a partial export would read as if the rest did not exist.
+ * is an error: a partial export or plan would read as if the rest did not exist.
  */
 export async function listAll(
   s: Session,
@@ -66,8 +66,8 @@ export async function listAll(
     cursor = nextStr;
   }
   throw new CliError(
-    `${operationId} has more than ${MAX_PAGES * PAGE_LIMIT} entries; ivora export stops ` +
-      'rather than write a partial file.',
+    `${operationId} has more than ${MAX_PAGES * PAGE_LIMIT} entries; ivora stops rather ` +
+      'than work from a partial read.',
     ExitCode.ApiError,
   );
 }

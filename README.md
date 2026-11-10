@@ -115,6 +115,7 @@ ivora api locations_read_one_location --path location_id=1
 ```sh
 ivora validate [-f ivora.yaml]   # check a project file offline; nothing is sent or changed
 ivora validate --schema          # print the JSON Schema (for editors)
+ivora plan [-f ivora.yaml]       # diff the file against the live project; read-only, applies nothing
 ```
 
 `ivora.yaml` describes one project: `locations`, `stations` (with `evses` and `connectors`),
@@ -134,6 +135,13 @@ hand-written.
   printed.
 - Exit code 0 means the file is valid and 2 means it is not. Errors go to stderr as
   `file: path: message`, and `--json` gives a machine-readable result.
+
+`ivora plan` matches each live resource to the file entry whose local key equals its
+`metadata["ivora.key"]`; a station without one also matches on `charger_id`, and a webhook on its
+URL. Only a live resource that carries an `ivora.key` missing from the file is shown as a delete.
+A resource without one is listed as unmanaged and never deleted; `external_reference` never decides
+either. Adopt hints propose writing `ivora.key` on an existing resource and are never applied. The
+`project` must be the project id (`42` or `proj_42`), and a key for another project is refused.
 
 ## Troubleshooting
 

@@ -14,6 +14,12 @@
   (`metadata["ivora.key"]` or a generated one), money is a quoted decimal string, and station
   passwords are `{ secret: env:NAME }` references, never values. `roaming_partners` and `apps`
   need a signed-in admin and are not exported; the reason is printed and noted in the header.
+- `ivora plan [-f ivora.yaml] [--json]` (IVP-1127) compares the file with the live project through
+  GET requests only and prints create, update, delete and no-op per location, tariff, station and
+  webhook, with risks, adopt hints (proposals only) and a file-based site power check. Resources
+  match on `metadata["ivora.key"]` (stations also on `charger_id`); only a keyed resource missing
+  from the file is a delete, and a resource without a key is unmanaged. Read-only: it applies
+  nothing and never reads a secret.
 
 ## 0.2.0
 
