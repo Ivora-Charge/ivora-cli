@@ -51,7 +51,13 @@ describe('profiles', () => {
     assert.match(msg, /live profile "live" exists/);
     assert.match(msg, /Add --live to the command/);
     assert.doesNotMatch(msg, /ivora login/);
-    assert.match(missingProfileMessage('test', { profiles: {} }), /Run `ivora login` first/);
+    const empty = missingProfileMessage('test', { profiles: {} });
+    assert.match(empty, /Run `ivora login` first/);
+    assert.match(empty, /`ivora --live login` for production/);
+    assert.match(
+      missingProfileMessage('live', { profiles: {} }, true),
+      /No profile "live"\. Run `ivora --live login` first/,
+    );
   });
 
   it('explains a test profile without an API base URL', () => {
