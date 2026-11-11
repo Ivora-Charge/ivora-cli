@@ -4,9 +4,10 @@
 and operators who manage charging stations, run OCPP diagnostics, test webhooks and migrate
 charger networks from a terminal or a script.
 
-`@ivora/cli` is published on npm, with the command `ivora`. This is v0.2: pre-alpha, and it
-never changes anything on your account: its commands read from the API (`quote` and `simulate`
-are compute-only POSTs), while `login` and `logout` write only local config and the keychain. Start with a test key
+`@ivora/cli` is published on npm, with the command `ivora`. This is v0.2: pre-alpha, and its
+commands read from the API (`tariffs quote` and `tariffs simulate` are compute-only POSTs) and
+change nothing on your account. `login` and `logout` write local config and the keychain, and
+`logout` also revokes the OAuth token on the server. Start with a test key
 (`iv_test_`) before pointing it at a live account.
 
 ## Quick start

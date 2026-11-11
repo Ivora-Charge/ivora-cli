@@ -218,7 +218,8 @@ export function missingProfileMessage(name: string, config: ProfileConfig, live 
       );
     }
   }
-  return `No profile "${name}". Run \`ivora login${name === 'live' ? ' --live' : ''}\` first.`;
+  if (name === 'live') return 'No profile "live". Run `ivora --live login` first.';
+  return `No profile "${name}". Run \`ivora login\` first, or \`ivora --live login\` for production.`;
 }
 
 /**

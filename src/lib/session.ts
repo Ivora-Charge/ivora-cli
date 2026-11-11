@@ -106,8 +106,9 @@ export async function openSession(ctx: CommandContext): Promise<Session> {
           ? await (await ctx.secrets()).get(stored.keyRef)
           : undefined;
     if (key === undefined) {
+      const loginCmd = profile.environment === 'live' ? 'ivora --live login' : 'ivora login';
       throw new CliError(
-        `No stored key for profile "${name}". Run \`ivora login\` again, or set IVORA_API_KEY.`,
+        `No stored key for profile "${name}". Run \`${loginCmd}\` again, or set IVORA_API_KEY.`,
         ExitCode.Auth,
       );
     }
